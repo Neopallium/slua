@@ -1,0 +1,44 @@
+README for slua
+
+=== Requires ===
+
+=== Compile ===
+ * mkdir build
+ * cd build
+ for Release build:
+ * cmake .. -DCMAKE_BUILD_TYPE=Release
+ for Debug build:
+ * cmake .. -DCMAKE_BUILD_TYPE=Debug
+ * make
+
+=== Install ===
+ * make install
+
+=== Patches to lua/src ===
+ * Emergency Garbage Collector: http://lua-users.org/wiki/EmergencyGarbageCollector
+ * LuaCoco-1.1.6: http://luajit.org/coco.html + (x86_64 support added)
+ * a few hooks where added to support static compiled functions.
+
+=== Programs ===
+ * slua: This command can be used to run Lua script.  It doesn't have JIT support!
+ * sluac: This command compiles Lua scripts into C code which calls lua vm ops functions.
+ * slua-compiler: This is a bash script that wraps sluac to compile Lua scripts into standalone executables or loadable modules.
+
+=== Libraries ===
+ -- static & dynamic libraries for linking into host app.
+ * libslua_static.a & libslua.so
+
+ -- Used for compling Lua scripts to standalone executables.
+ * liblua_main.a
+
+=== Using slua ===
+'sluac' alone can only compile Lua scripts to Lua bytecode or C code.  A wrapper script called 'slua-compiler' is provided that wraps 'sluac' and gcc.
+
+Compile standalone Lua script:
+slua-compiler script.lua
+outputs: ./script
+
+Compile Lua script as a module:
+slua-compiler -lua-module script.lua
+outputs: ./script.so
+
