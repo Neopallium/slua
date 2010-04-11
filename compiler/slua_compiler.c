@@ -39,6 +39,21 @@
 #include "ldo.h"
 #include "lmem.h"
 
+#define USE_PARAM_PREFIX 0
+#define USE_VAR_PREFIX 0
+
+typedef struct CodeBlock CodeBlock;
+typedef struct CVariable CVariable;
+typedef enum CValueType CValueType;
+typedef struct CValue CValue;
+typedef struct CValues CValues;
+typedef struct CFuncProto CFuncProto;
+typedef struct CFunc CFunc;
+typedef struct OPFunc OPFunc;
+
+static void CFunc_var(CFunc *func, CValue *val, const char *type, const char *name);
+static int CodeBlock_printf(CodeBlock *block, const char *fmt, ...);
+
 static unsigned int OptLevel = 0;
 static bool DisableOpt = false;
 static bool OptLevelO1 = false;
@@ -48,11 +63,58 @@ static bool OptLevelO3 = false;
 #define BRANCH_COND -1
 #define BRANCH_NONE -2
 
-typedef struct CVariable {
+const char *lua_vm_get_var_type(val_t type, hint_t hints) {
+	switch(type) {
+	case VAR_T_VOID:
+		return "void";
+	case VAR_T_INT:
+	case VAR_T_ARG_A:
+	case VAR_T_ARG_B:
+	case VAR_T_ARG_BK:
+	case VAR_T_ARG_Bx:
+	case VAR_T_ARG_Bx_NUM_CONSTANT:
+	case VAR_T_ARG_B_FB2INT:
+	case VAR_T_ARG_sBx:
+	case VAR_T_ARG_C:
+	case VAR_T_ARG_CK:
+	case VAR_T_ARG_C_NUM_CONSTANT:
+	case VAR_T_ARG_C_NEXT_INSTRUCTION:
+	case VAR_T_ARG_C_FB2INT:
+	case VAR_T_PC_OFFSET:
+	case VAR_T_INSTRUCTION:
+	case VAR_T_NEXT_INSTRUCTION:
+		return "uint32_t";
+	case VAR_T_LUA_STATE_PTR:
+		return "lua_State *";
+	case VAR_T_K:
+		return "TValue *";
+	case VAR_T_CL:
+		return "LClosure *";
+	case VAR_T_OP_VALUE_0:
+	case VAR_T_OP_VALUE_1:
+	case VAR_T_OP_VALUE_2:
+		if(hints & HINT_USE_LONG) {
+			return "uint64_t";
+		}
+		return "double";
+	default:
+		fprintf(stderr, "Error: missing var_type=%d\n", type);
+		exit(1);
+		break;
+	}
+	return NULL;
+}
+
+/**
+ *
+ * CVariable
+ *
+ */
+struct CVariable {
 	char *type;
 	char *name;
 	int refcount;
-} CVariable;
+};
 
 static CVariable *new_CVariable(const char *type, const char *name) {
 	CVariable *var = (CVariable *)malloc(sizeof(CVariable));
@@ -78,14 +140,19 @@ static void CVariable_unref(CVariable *var) {
 	}
 }
 
-typedef enum CValueType {
+/**
+ *
+ * CValueType, CValueData, CValue
+ *
+ */
+enum CValueType {
 	VOID = 0,
 	INTEGER,
 	BOOLEAN,
 	DOUBLE,
 	STRING,
 	VARIABLE,
-} CValueType;
+};
 
 typedef union CValueData {
 	uint64_t  num;
@@ -94,10 +161,10 @@ typedef union CValueData {
 	CVariable *var;
 } CValueData;
 
-typedef struct CValue {
+struct CValue {
 	CValueType type;
 	CValueData data;
-} CValue;
+};
 
 static void clear_CValue(CValue *val) {
 	switch(val->type) {
@@ -140,11 +207,13 @@ static void CValue_double(CValue *val, double dnum) {
 	val->data.dnum = dnum;
 }
 
+/*
 static void CValue_string(CValue *val, const char *str) {
 	clear_CValue(val);
 	val->type = STRING;
 	val->data.str = strdup(str);
 }
+*/
 
 static void CValue_variable(CValue *val, const char *type, const char *name) {
 	clear_CValue(val);
@@ -172,11 +241,16 @@ static void CValue_set(CValue *val, const CValue *new_val) {
 	}
 }
 
-typedef struct CValues {
+/**
+ *
+ * CValues
+ *
+ */
+struct CValues {
 	CValue *values;
 	int len;
 	int size;
-} CValues;
+};
 
 static void grow_CValues(CValues *values, int need) {
 	int new_size = values->len + need;
@@ -203,7 +277,7 @@ static CValues *new_CValues(int len) {
 static void clear_CValues(CValues *values) {
 	int i;
 	for(i = values->size - 1; i >= 0; i--) {
-		clear_CValue(&(values->values[i]));
+		CValue_void(&(values->values[i]));
 	}
 	values->len = 0;
 }
@@ -232,40 +306,133 @@ static void CValues_push_back(CValues *values, const CValue *val) {
 	values->len += 1;
 }
 
+/*
 static const CValue *CValues_pop_back(CValues *values) {
 	int idx;
 	values->len -= 1;
 	idx = values->len;
 	return &(values->values[idx]);
 }
+*/
 
-typedef struct OPFunc OPFunc;
-
-struct OPFunc {
-	const vm_func_info *info;
-	OPFunc *next;
+/**
+ *
+ * CFuncProto
+ *
+ */
+struct CFuncProto {
+	char      *ret_type;
+	char      *name;
+	CValues   *params;
+	bool      is_extern;
 };
 
-static OPFunc *new_OPFunc(const vm_func_info *info, OPFunc *next) {
-	OPFunc *func = (OPFunc *)malloc(sizeof(OPFunc));
-	func->info = info;
-	func->next = next;
-	return func;
+static CFuncProto *new_CFuncProto(const char *ret_type, const char *name, bool is_extern) {
+	CFuncProto *proto = (CFuncProto *)malloc(sizeof(CFuncProto));
+	proto->ret_type = strdup(ret_type);
+	proto->name = strdup(name);
+	proto->params = new_CValues(0);
+	proto->is_extern = is_extern;
+	return proto;
 }
 
-static void free_OPFunc(OPFunc *func) {
-	OPFunc *next;
-	if(func == NULL) return;
-	next = func->next;
-	free(func);
-	free_OPFunc(next);
+static void free_CFuncProto(CFuncProto *proto) {
+	free(proto->ret_type);
+	free(proto->name);
+	free_CValues(proto->params);
+	free(proto);
 }
 
-typedef struct CodeBlock CodeBlock;
+static void CFuncProto_create_param(CFuncProto *proto, CValue *val,
+	const char *type, const char *name)
+{
+	char var_name[8192];
+#if USE_PARAM_PREFIX
+	snprintf(var_name, 8192, "param_%s", name);
+#else
+	snprintf(var_name, 8192, "%s", name);
+#endif
+	CValue_variable(val, type, var_name);
+	CValues_push_back(proto->params, val);
+}
+
+static CFuncProto *build_CFuncProto(const char *ret_type, const char *name, bool is_extern, ...) {
+	CFuncProto *proto = new_CFuncProto(ret_type, name, is_extern);
+	CValue val = { .type = VOID };
+	va_list ap;
+	char *param_type = NULL;
+	char *param;
+
+	va_start(ap, is_extern);
+	while((param = va_arg(ap, char *)) != NULL) {
+		if(param_type == NULL) {
+			param_type = param;
+			continue;
+		}
+		CFuncProto_create_param(proto, &val, param_type, param);
+		param_type = NULL;
+	}
+	va_end(ap);
+	return proto;
+}
+
+static int CFuncProto_dump(CFuncProto *proto, FILE *file, bool define) {
+	const CVariable *var;
+	const CValue *val;
+	int len;
+	int rc = 0;
+	int total = 0;
+	int i;
+	/* gen function prototype. */
+	if(proto->is_extern) {
+		if(define) {
+			rc = fprintf(file, "extern ");
+			if(rc < 0) return -1;
+			total += rc;
+		}
+	} else {
+		rc = fprintf(file, "static ");
+		if(rc < 0) return -1;
+		total += rc;
+	}
+	rc = fprintf(file, "%s %s(", proto->ret_type, proto->name);
+	if(rc < 0) return -1;
+	total += rc;
+	/* gen function parameters. */
+	len = proto->params->len;
+	for(i = 0; i < len;) {
+		val = CValues_get(proto->params, i);
+		assert(val->type == VARIABLE);
+		var = val->data.var;
+		rc = fprintf(file, "%s %s", var->type, var->name);
+		if(rc < 0) return -1;
+		total += rc;
+		if((++i) < len) {
+			rc = fprintf(file, ", ");
+			if(rc < 0) return -1;
+			total += rc;
+		}
+	}
+	if(define) {
+		rc = fprintf(file, ");\n");
+	} else {
+		rc = fprintf(file, ")");
+	}
+	if(rc < 0) return -1;
+	total += rc;
+	return total;
+}
+
+/**
+ *
+ * CodeBlock
+ *
+ */
 
 #define GROW_SIZE 512
 #define MIN_SIZE 128
 struct CodeBlock {
+	CFunc *parent;
 	char *name;  /* code block label. */
 	char *code;  /* code block buffer. */
 	int  len;    /* length of code written into this block. */
@@ -280,8 +447,9 @@ static void grow_CodeBlock(CodeBlock *block, int need) {
 }
 
 static int CodeBlock_printf(CodeBlock *block, const char *fmt, ...);
-static CodeBlock *new_CodeBlock(const char *name, int write_label) {
+static CodeBlock *new_CodeBlock(CFunc *parent, const char *name, int write_label) {
 	CodeBlock *block = (CodeBlock *)malloc(sizeof(CodeBlock));
+	block->parent = parent;
 	block->name = strdup(name);
 	block->code = NULL;
 	block->len = 0;
@@ -342,21 +510,156 @@ static int CodeBlock_printf(CodeBlock *block, const char *fmt, ...) {
 	return rc;
 }
 
+static void CodeBlock_write_value(CodeBlock *block, const CValue *val) {
+	switch(val->type) {
+	case VOID:
+		break;
+	case INTEGER:
+	case BOOLEAN:
+		CodeBlock_printf(block, "%ld", val->data.num);
+		break;
+	case DOUBLE:
+		CodeBlock_printf(block, "%f", val->data.dnum);
+		break;
+	case STRING:
+		CodeBlock_printf(block, "\"%s\"", val->data.str);
+		break;
+	case VARIABLE:
+		CodeBlock_printf(block, "%s", val->data.var->name);
+		break;
+	}
+}
+
 static void CodeBlock_jump(CodeBlock *block, CodeBlock *desc) {
 	CodeBlock_printf(block, "\tgoto block_%s;\n", desc->name);
 }
 
-typedef struct CFunc {
-	CValues   *params;
+static void CodeBlock_cond_jump(CodeBlock *block, CValue *cond, CodeBlock *true_block,
+	CodeBlock *false_block)
+{
+	CodeBlock_printf(block, "\tif(");
+		CodeBlock_write_value(block, cond);
+	CodeBlock_printf(block, ") {\n\t");
+		CodeBlock_jump(block, true_block);
+	CodeBlock_printf(block, "\t} else {\n\t");
+		CodeBlock_jump(block, false_block);
+	CodeBlock_printf(block, "\t}\n");
+}
+
+static void CodeBlock_call_args(CodeBlock *block, CValue *call, const char *ret,
+	CFuncProto *proto, CValues *args)
+{
+	const CValue *param;
+	bool need_comma = false;
+	int len;
+	int i;
+
+	if(call != NULL && strncasecmp("void", proto->ret_type, 4) != 0) {
+		if(ret == NULL) ret = "ret_val";
+		CFunc_var(block->parent, call, proto->ret_type, ret);
+		CodeBlock_printf(block, "\t%s = ", call->data.var->name);
+	} else {
+		assert(call == NULL);
+		CodeBlock_printf(block, "\t");
+	}
+	CodeBlock_printf(block, "%s(", proto->name);
+	len = args->len;
+	for(i = 0; i < len; i++) {
+		param = CValues_get(args, i);
+		if(need_comma) {
+			CodeBlock_printf(block, ", ");
+		} else {
+			need_comma = true;
+		}
+		CodeBlock_write_value(block, param);
+	}
+	CodeBlock_printf(block, ");\n");
+}
+
+static void CodeBlock_call(CodeBlock *block, CValue *call, const char *ret, CFuncProto *proto, ...)
+{
+	va_list ap;
+	const CValue *param;
+	bool need_comma = false;
+
+	if(call != NULL && strncasecmp("void", proto->ret_type, 4) != 0) {
+		if(ret == NULL) ret = "ret_val";
+		CFunc_var(block->parent, call, proto->ret_type, ret);
+		CodeBlock_printf(block, "\t%s = ", call->data.var->name);
+	} else {
+		assert(call == NULL);
+		CodeBlock_printf(block, "\t");
+	}
+	CodeBlock_printf(block, "%s(", proto->name);
+	va_start(ap, proto);
+	while((param = va_arg(ap, const CValue *)) != NULL) {
+		if(need_comma) {
+			CodeBlock_printf(block, ", ");
+		} else {
+			need_comma = true;
+		}
+		CodeBlock_write_value(block, param);
+	}
+	va_end(ap);
+	CodeBlock_printf(block, ");\n");
+}
+#define CodeBlock_call_void(block, proto, ...) \
+	CodeBlock_call(block, NULL, NULL, proto, ##__VA_ARGS__)
+
+static void CodeBlock_ret(CodeBlock *block, CValue *ret) {
+	CodeBlock_printf(block, "\treturn ");
+	CodeBlock_write_value(block, ret);
+	CodeBlock_printf(block, ";\n");
+}
+
+static void CodeBlock_store(CodeBlock *block, const CValue *var, const CValue *val) {
+	CodeBlock_printf(block, "\t%s = (", var->data.var->name);
+	CodeBlock_write_value(block, val);
+	CodeBlock_printf(block, ");\n");
+}
+
+static void CodeBlock_compare(CodeBlock *block,
+	CValue *var, const char *name, const CValue *val1, char *cmp, const CValue *val2)
+{
+	CFunc_var(block->parent, var, "int", name);
+	CodeBlock_printf(block, "\t%s = (", var->data.var->name);
+	CodeBlock_write_value(block, val1);
+	CodeBlock_printf(block, " %s ", cmp);
+	CodeBlock_write_value(block, val2);
+	CodeBlock_printf(block, ");\n");
+}
+#define CodeBlock_cmp_ne(block, var, name, val1, val2) \
+	CodeBlock_compare(block, var, name, val1, "!=", val2)
+
+static void CodeBlock_binop(CodeBlock *block,
+	const CValue *var, const CValue *val1, char *op, const CValue *val2)
+{
+	CodeBlock_printf(block, "\t%s = (", var->data.var->name);
+	CodeBlock_write_value(block, val1);
+	CodeBlock_printf(block, " %s ", op);
+	CodeBlock_write_value(block, val2);
+	CodeBlock_printf(block, ");\n");
+}
+
+#define CodeBlock_add(block, var, val1, val2) \
+	CodeBlock_binop(block, var, val1, "+", val2)
+
+#define CodeBlock_sub(block, var, val1, val2) \
+	CodeBlock_binop(block, var, val1, "-", val2)
+
+/**
+ *
+ * CFunc
+ *
+ */
+struct CFunc {
+	CFuncProto *proto;
 	CodeBlock *prolog;
-	CodeBlock *epilog;
 	CodeBlock **blocks;
-	char      *ret_type;
-	char      *name;
 	int       len;
 	int       size;
 	int       vars;
-} CFunc;
+};
 
 static void grow_CFunc(CFunc *func, int need) {
 	int new_size = func->len + need;
@@ -372,17 +675,14 @@ static void grow_CFunc(CFunc *func, int need) {
 
 static CFunc *new_CFunc(const char *ret_type, const char *name) {
 	CFunc *func = (CFunc *)malloc(sizeof(CFunc));
-	func->ret_type = strdup(ret_type);
-	func->name = strdup(name);
-	func->params = new_CValues(0);
+	func->proto = new_CFuncProto(ret_type, name, false);
 	func->blocks = NULL;
 	func->len = 0;
 	func->size = 0;
 	func->vars = 0;
 	grow_CFunc(func, 0);
-	/* create prolog/epilog blocks. */
-	func->prolog = new_CodeBlock("prolog", 0);
-	func->epilog = new_CodeBlock("epilog", 1);
+	/* create prolog block. */
+	func->prolog = new_CodeBlock(func, "prolog", 0);
 	return func;
 }
 
@@ -391,9 +691,8 @@ static void free_CFunc(CFunc *func) {
 	for(i = func->size - 1; i >= 0; i--) {
 		free_CodeBlock(func->blocks[i]);
 	}
-	free_CValues(func->params);
+	free_CFuncProto(func->proto);
 	free_CodeBlock(func->prolog);
-	free_CodeBlock(func->epilog);
 	free(func->blocks);
 	free(func);
 }
@@ -403,51 +702,39 @@ static CodeBlock *CFunc_create_block(CFunc *func, const char *name) {
 	int idx = func->len;
 	grow_CFunc(func, 1);
 	func->len += 1;
-	block = new_CodeBlock(name, 1);
+	block = new_CodeBlock(func, name, 1);
 	func->blocks[idx] = block;
 	return block;
 }
 
 static void CFunc_create_param(CFunc *func, CValue *val, const char *type, const char *name) {
-	char var_name[8192];
-	snprintf(var_name, 8192, "param_%s", name);
-	CValue_variable(val, type, var_name);
-	CValues_push_back(func->params, val);
+	CFuncProto_create_param(func->proto, val, type, name);
 }
 
 static void CFunc_var(CFunc *func, CValue *val, const char *type, const char *name) {
 	char var_name[8192];
 	int var_idx = func->vars++;
-	snprintf(var_name, 8192, "var_%d_%s", var_idx, name);
+#if USE_VAR_PREFIX
+	snprintf(var_name, 8192, "var_%s%d", name, var_idx);
+#else
+	snprintf(var_name, 8192, "%s%d", name, var_idx);
+#endif
 	CodeBlock_printf(func->prolog, "\t%s %s;\n", type, var_name);
 	CValue_variable(val, type, var_name);
 }
 
 static int CFunc_dump(CFunc *func, FILE *file) {
-	const CVariable *var;
-	const CValue *val;
 	int len;
 	int rc = 0;
 	int total = 0;
 	int i;
 	/* gen function prototype. */
-	rc = fprintf(file, "static %s %s(", func->ret_type, func->name);
+	rc = CFuncProto_dump(func->proto, file, false);
 	if(rc < 0) return -1;
-	/* gen function parameters. */
-	len = func->params->len;
-	for(i = 0; i < len;) {
-		val = CValues_get(func->params, i);
-		assert(val->type == VARIABLE);
-		var = val->data.var;
-		rc = fprintf(file, "%s %s", var->type, var->name);
-		if(rc < 0) return -1;
-		if((++i) < len) {
-			rc = fprintf(file, ", ");
-			if(rc < 0) return -1;
-		}
-	}
-	rc = fprintf(file, ") {\n");
+	total += rc;
+	rc = fprintf(file, " {\n");
 	if(rc < 0) return -1;
+	total += rc;
 	/* gen prolog code. */
 	rc = CodeBlock_dump(func->prolog, file);
 	if(rc < 0) return -1;
@@ -464,11 +751,50 @@ static int CFunc_dump(CFunc *func, FILE *file) {
 	return total;
 }
 
+/**
+ *
+ * OPFunc: Lua VM op functions.
+ *
+ */
+
+struct OPFunc {
+	const vm_func_info *info;
+	CFuncProto *proto;
+	OPFunc     *next;
+};
+
+static OPFunc *new_OPFunc(const vm_func_info *info, OPFunc *next) {
+	const char *ret_type;
+	CValue val = { .type = VOID };
+	char buf[128];
+	int x;
+	OPFunc *func = (OPFunc *)malloc(sizeof(OPFunc));
+
+	func->info = info;
+	func->next = next;
+	ret_type = lua_vm_get_var_type(info->ret_type, info->hint);
+	func->proto = new_CFuncProto(ret_type, info->name, false);
+	for(x = 0; info->params[x] != VAR_T_VOID; x++) {
+		snprintf(buf, 128, "%d", x);
+		CFuncProto_create_param(func->proto, &val, lua_vm_get_var_type(info->params[x], info->hint), buf);
+	}
+	CValue_void(&val);
+	return func;
+}
+
+static void free_OPFunc(OPFunc *func) {
+	OPFunc *next;
+	if(func == NULL) return;
+	next = func->next;
+	free(func);
+	free_OPFunc(next);
+}
+
 //===----------------------------------------------------------------------===//
-// Lua bytecode to LLVM IR compiler
+// Lua bytecode to C code compiler
 //===----------------------------------------------------------------------===//
 
-void get_proto_constant(CValue *val, TValue *constant) {
+static void get_proto_constant(CValue *val, TValue *constant) {
 	switch(ttype(constant)) {
 	case LUA_TBOOLEAN:
 		CValue_boolean(val, !l_isfalse(constant));
@@ -478,17 +804,27 @@ void get_proto_constant(CValue *val, TValue *constant) {
 		break;
 	case LUA_TSTRING:
 		/* not used. */
-		clear_CValue(val);
+		CValue_void(val);
 		break;
 	case LUA_TNIL:
 	default:
-		clear_CValue(val);
+		CValue_void(val);
 		break;
 	}
 }
 
 static OPFunc *vm_op_funcs[NUM_OPCODES];
 static int strip_code = false;
+static CFuncProto *vm_next_OP_proto = NULL;
+static CFuncProto *vm_count_OP_proto = NULL;
+static CFuncProto *vm_print_OP_proto = NULL;
+static CFuncProto *vm_mini_vm_proto = NULL;
+static CFuncProto *vm_get_current_closure_proto = NULL;
+static CFuncProto *vm_get_current_constants_proto = NULL;
+static CFuncProto *vm_get_number_proto = NULL;
+static CFuncProto *vm_set_number_proto = NULL;
+static CFuncProto *vm_get_long_proto = NULL;
+static CFuncProto *vm_set_long_proto = NULL;
 
 int slua_compiler_main() {
 	return 0;
@@ -509,6 +845,34 @@ SLuaCompiler *slua_new_compiler(lua_State *L, FILE *file, int strip) {
 	if(OptLevelO3) OptLevel = 3;
 	if(DisableOpt) OptLevel = 0;
 	strip_code = strip;
+
+	// define extern vm_next_OP
+	vm_next_OP_proto = build_CFuncProto("void", "vm_next_OP", true,
+		"lua_State *","L", "LClosure *","cl", "int ","pc_offset", NULL);
+	vm_count_OP_proto = build_CFuncProto("void", "vm_count_OP", true,
+		"uint32_t","i", NULL);
+
+	vm_print_OP_proto = build_CFuncProto("void", "vm_print_OP", true,
+		"lua_State *","L", "LClosure *","cl", "uint32_t","i", "int","pc_offset", NULL);
+
+	vm_mini_vm_proto = build_CFuncProto("void", "vm_mini_vm", true,
+		"lua_State *","L", "LClosure *","cl", "int","count", "int","pseudo_ops_offset", NULL);
+
+	vm_get_current_closure_proto = build_CFuncProto("LClosure *", "vm_get_current_closure", true,
+		"lua_State *","L", NULL);
+
+	vm_get_current_constants_proto = build_CFuncProto("TValue *", "vm_get_current_constants", true,
+		"LClosure *","cl", NULL);
+
+	vm_get_number_proto = build_CFuncProto("double", "vm_get_number", true,
+		"lua_State *","L", "int","idx", NULL);
+	vm_set_number_proto = build_CFuncProto("void", "vm_set_number", true,
+		"lua_State *","L", "int","idx", "double","num", NULL);
+
+	vm_get_long_proto = build_CFuncProto("uint64_t", "vm_get_long", true,
+		"lua_State *","L", "int","idx", NULL);
+	vm_set_long_proto = build_CFuncProto("void", "vm_set_long", true,
+		"lua_State *","L", "int","idx", "uint64_t","num", NULL);
 
 	// create prototype for vm_* functions.
 	for(i = 0; i < NUM_OPCODES; i++) vm_op_funcs[i] = NULL; // clear list.
@@ -544,6 +908,7 @@ void slua_compiler_compile_all(SLuaCompiler *compiler, Proto *parent) {
 
 #define BUF_LEN 8192
 void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
+	lua_State *L = compiler->L;
 	Instruction *code=p->code;
 	TValue *k=p->k;
 	int code_len=p->sizecode;
@@ -555,12 +920,15 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 	CodeBlock *entry_block=NULL;
 	CodeBlock *ip=NULL;
 	CValue *brcond=NULL;
-	CValue func_L;
-	CValue func_cl;
-	CValue func_k;
+	CValue func_L = { .type = VOID };
+	CValue func_cl = { .type = VOID };
+	CValue func_k = { .type = VOID };
 	const vm_func_info *func_info;
 	CValues *args = NULL;
-	//llvm::CallInst *call=NULL;
+	CValue call = { .type = VOID };
+	CValue val = { .type = VOID };
+	CValue val2 = { .type = VOID };
+	CValue val3 = { .type = VOID };
 	char buf[BUF_LEN];
 	//char locals[LUAI_MAXVARS];
 	int strip_ops=0;
@@ -569,12 +937,12 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 	int opcode;
 	int mini_op_repeat=0;
 	int i;
+	int x;
 	int len;
 	hint_t *op_hints = NULL;
 	CValues **op_values = NULL;
 	CodeBlock **op_blocks = NULL;
 	bool *need_op_block = NULL;
-	CValue val;
 
 	// create function.
 	strncpy(buf, getstr(p->source), 33);
@@ -605,18 +973,14 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 	op_values     = (CValues **)calloc(code_len, sizeof(CValues *));
 	op_blocks     = (CodeBlock **)calloc(code_len, sizeof(CodeBlock *));
 	need_op_block = (bool *)calloc(code_len, sizeof(bool));
-#if 0
 	// get LClosure & constants.
-	call=Builder.CreateCall(vm_get_current_closure, func_L);
-	func_cl=call;
-	call=Builder.CreateCall(vm_get_current_constants, func_cl);
-	func_k=call;
-#endif
+	CodeBlock_call(ip, &func_cl, "cl", vm_get_current_closure_proto, &(func_L), NULL);
+	CodeBlock_call(ip, &func_k, "k", vm_get_current_closure_proto, &(func_cl), NULL);
 
 	// find all jump/branch destinations and create a new basic block at that opcode.
 	// also build hints for some opcodes.
 	for(i = 0; i < code_len; i++) {
-		need_op_block[i] = true; /* TODO: remove. */
+		//need_op_block[i] = true; /* TODO: remove. */
 		op_intr=code[i];
 		opcode = GET_OPCODE(op_intr);
 		// combind simple ops into one function call.
@@ -692,7 +1056,6 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 					CValues *vals;
 					int forprep_ra = GETARG_A(op_intr);
 					bool no_jmp_end_point = true; // don't process ops after finding a jmp end point.
-					int x;
 					vals = new_CValues(4);
 					// find & load constants for init/plimit/pstep
 					for(x = 1; x < 6 && found < 3 && no_jmp_end_point; ++x) {
@@ -826,7 +1189,6 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 	} else {
 		current_block = entry_block;
 	}
-#if 0
 	// gen op calls.
 	for(i = 0; i < code_len; i++) {
 		if(op_blocks[i] != NULL) {
@@ -860,10 +1222,9 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				op_count++;
 			}
 			if(op_count >= 3) {
-				// large block of mini ops add function call to vm_mini_vm()
-				Builder.CreateCall4(vm_mini_vm, func_L, func_cl,
-					llvm::ConstantInt::get(getCtx(), llvm::APInt(32,op_count)),
-					llvm::ConstantInt::get(getCtx(), llvm::APInt(32,i - strip_ops)));
+				CValue_integer(&val2, op_count);
+				CValue_integer(&val3, (i - strip_ops));
+				CodeBlock_call_void(ip, vm_mini_vm_proto, &(func_L), &(func_cl), &(val2), &(val3), NULL);
 				if(strip_code && strip_ops > 0) {
 					while(op_count > 0) {
 						code[i - strip_ops] = code[i];
@@ -909,8 +1270,8 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 			CodeBlock *loop_test;
 			CodeBlock *prep_block;
 			CodeBlock *incr_block;
-			CValue *init,*step,*idx_var,*cur_idx,*next_idx;
-			llvm::PHINode *PN;
+			const CValue *init,*step,*idx_var;
+			//*cur_idx,*next_idx;
 			CValues *vals;
 
 			vals=op_values[i];
@@ -920,14 +1281,12 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				// get for loop 'idx' variable.
 				step = CValues_get(vals, 2);
 				idx_var = CValues_get(vals, 3);
-				assert(idx_var != NULL);
+				assert(idx_var->type != VOID);
 				incr_block = current_block;
-				cur_idx = Builder.CreateLoad(idx_var);
-				next_idx = Builder.CreateAdd(cur_idx, step, "next_idx");
-				Builder.CreateStore(next_idx, idx_var); // store 'for_init' value.
+				CodeBlock_add(ip, idx_var, idx_var, step);
 				// create extra BasicBlock for vm_OP_FORLOOP_*
-				snprintf(tmp,128,"op_block_%s_%d_loop_test",luaP_opnames[opcode],i);
-				loop_test = CFunc_create_block(func, tmp);
+				snprintf(buf,128,"op_block_%s_%d_loop_test",luaP_opnames[opcode],i);
+				loop_test = CFunc_create_block(func, buf);
 				// create unconditional jmp from current block to loop test block
 				CodeBlock_jump(ip, loop_test);
 				// create unconditional jmp from forprep block to loop test block
@@ -937,19 +1296,11 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				// set current_block to loop_test block
 				current_block = loop_test;
 				ip = current_block;
-				// Emit merge block
-				if(op_hints[i] & HINT_USE_LONG) {
-					PN = Builder.CreatePHI(llvm::Type::getInt64Ty(getCtx()), "idx");
-				} else {
-					PN = Builder.CreatePHI(llvm::Type::getDoubleTy(getCtx()), "idx");
-				}
-				PN->addIncoming(init, prep_block);
-				PN->addIncoming(next_idx, incr_block);
-				CValues_set(vals, 0,  PN);
 			}
 		}
 		clear_CValues(args);
-		for(int x = 0; func_info->params[x] != VAR_T_VOID ; x++) {
+		for(x = 0; func_info->params[x] != VAR_T_VOID ; x++) {
+			CValue_void(&val);
 			switch(func_info->params[x]) {
 			case VAR_T_ARG_A:
 				CValue_integer(&val, GETARG_A(op_intr));
@@ -961,10 +1312,10 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				CValue_integer(&val, luaO_fb2int(GETARG_C(op_intr)));
 				break;
 			case VAR_T_ARG_Bx_NUM_CONSTANT:
-				get_proto_constant(val, k + INDEXK(GETARG_Bx(op_intr)));
+				get_proto_constant(&val, k + INDEXK(GETARG_Bx(op_intr)));
 				break;
 			case VAR_T_ARG_C_NUM_CONSTANT:
-				get_proto_constant(val, k + INDEXK(GETARG_C(op_intr)));
+				get_proto_constant(&val, k + INDEXK(GETARG_C(op_intr)));
 				break;
 			case VAR_T_ARG_C_NEXT_INSTRUCTION: {
 				int c = GETARG_C(op_intr);
@@ -1000,22 +1351,22 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				CValue_integer(&val, code[i+1]);
 				break;
 			case VAR_T_LUA_STATE_PTR:
-				val = func_L;
+				CValue_set(&val, &(func_L));
 				break;
 			case VAR_T_K:
-				val = func_k;
+				CValue_set(&val, &(func_k));
 				break;
 			case VAR_T_CL:
-				val = func_cl;
+				CValue_set(&val, &(func_cl));
 				break;
 			case VAR_T_OP_VALUE_0:
-				if(op_values[i] != NULL) set_Value(val, CValues_set(op_values[i], 0));
+				if(op_values[i] != NULL) CValue_set(&val, CValues_get(op_values[i], 0));
 				break;
 			case VAR_T_OP_VALUE_1:
-				if(op_values[i] != NULL) set_Value(val, CValues_set(op_values[i], 1));
+				if(op_values[i] != NULL) CValue_set(&val, CValues_get(op_values[i], 1));
 				break;
 			case VAR_T_OP_VALUE_2:
-				if(op_values[i] != NULL) set_Value(val, CValues_set(op_values[i], 2));
+				if(op_values[i] != NULL) CValue_set(&val, CValues_get(op_values[i], 2));
 				break;
 			default:
 				fprintf(stderr, "Error: not implemented!\n");
@@ -1024,18 +1375,18 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				fprintf(stderr, "Error: invalid value type!\n");
 				goto cleanup;
 			}
-			if(val == NULL) {
+			if(val.type == VOID) {
 				fprintf(stderr, "Error: Missing parameter '%d' for this opcode(%d) function=%s!\n", x,
 					opcode, func_info->name);
 				exit(1);
 			}
-			CValues_push_back(args, val);
+			CValues_push_back(args, &val);
 		}
 		// create call to opcode function.
 		if(func_info->ret_type != VAR_T_VOID) {
-			call=Builder.CreateCall(opfunc->func, args.begin(), args.end(), "retval");
+			CodeBlock_call_args(ip, &call, "retval", opfunc->proto, args);
 		} else {
-			call=Builder.CreateCall(opfunc->func, args.begin(), args.end());
+			CodeBlock_call_args(ip, NULL, NULL, opfunc->proto, args);
 		}
 		// handle retval from opcode function.
 		switch (opcode) {
@@ -1075,16 +1426,15 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				branch = BRANCH_NONE;
 				break;
 			case OP_TAILCALL:
-				//call->setTailCall(true);
-				brcond=call;
-				brcond=Builder.CreateICmpNE(brcond,
-						llvm::ConstantInt::get(getCtx(), llvm::APInt(32, PCRTAILRECUR)), "brcond");
+				CValue_integer(&val, PCRTAILRECUR);
+				CodeBlock_cmp_ne(ip, &val2, "brcond", &call, &val);
+				brcond=&val2;
 				i++; // skip return opcode.
 				false_block = op_blocks[0]; // branch to start of function if this is a recursive tail-call.
 				true_block = op_blocks[i]; // branch to return instruction if not recursive.
-				Builder.CreateCondBr(brcond, true_block, false_block);
+				CodeBlock_cond_jump(ip, brcond, true_block, false_block);
 				ip = op_blocks[i];
-				Builder.CreateRet(call);
+				CodeBlock_ret(ip, &call);
 				current_block = NULL; // have terminator
 				branch = BRANCH_NONE;
 				break;
@@ -1099,8 +1449,7 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 			case OP_TEST:
 			case OP_TESTSET:
 			case OP_TFORLOOP:
-				brcond=call;
-				brcond=Builder.CreateICmpNE(brcond, llvm::ConstantInt::get(getCtx(), llvm::APInt(32,0)), "brcond");
+				brcond=&call;
 				false_block=op_blocks[branch+1];
 				/* inlined JMP op. */
 				branch = ++i + 1;
@@ -1117,12 +1466,10 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				branch = BRANCH_COND; // do conditional branch
 				break;
 			case OP_FORLOOP: {
-				llvm::Function *set_func=vm_set_number;
-				llvm::CallInst *call2;
+				CFuncProto *set_func=vm_set_number_proto;
 				CValues *vals;
 
-				brcond=call;
-				brcond=Builder.CreateICmpNE(brcond, llvm::ConstantInt::get(getCtx(), llvm::APInt(32,0)), "brcond");
+				brcond=&call;
 				true_block=op_blocks[branch + GETARG_sBx(op_intr)];
 				false_block=op_blocks[branch];
 				branch = BRANCH_COND; // do conditional branch
@@ -1132,15 +1479,15 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				if(vals != NULL) {
 					CodeBlock *idx_block;
 					if(op_hints[i] & HINT_USE_LONG) {
-						set_func = vm_set_long;
+						set_func = vm_set_long_proto;
 					}
 					// create extra BasicBlock
-					snprintf(tmp,128,"op_block_%s_%d_set_for_idx",luaP_opnames[opcode],i);
-					idx_block = CFunc_create_block(func, tmp);
+					snprintf(buf,128,"op_block_%s_%d_set_for_idx",luaP_opnames[opcode],i);
+					idx_block = CFunc_create_block(func, buf);
 					ip = idx_block;
 					// copy idx value to Lua-stack.
-					call2=Builder.CreateCall3(set_func,func_L,
-						llvm::ConstantInt::get(getCtx(), llvm::APInt(32,(GETARG_A(op_intr) + 3))), CValues_get(vals, 0));
+					CValue_integer(&val, (GETARG_A(op_intr) + 3));
+					CodeBlock_call_void(ip, set_func, &(func_L), &(val), CValues_get(vals, 0), NULL);
 					// create jmp to true_block
 					CodeBlock_jump(ip, true_block);
 					true_block = idx_block;
@@ -1149,9 +1496,9 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				break;
 			}
 			case OP_FORPREP: {
-				llvm::Function *get_func=vm_get_number;
-				CValue *idx_var,*init;
-				llvm::CallInst *call2;
+				CFuncProto *get_func=vm_get_number_proto;
+				const CValue *idx_var,*init;
+				CValue call2 = { .type = VOID };
 				CValues *vals;
 
 				op_blocks[i] = current_block;
@@ -1160,32 +1507,31 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				// if no saved value, then use slow method.
 				if(vals == NULL) break;
 				if(op_hints[branch] & HINT_USE_LONG) {
-					get_func = vm_get_long;
+					get_func = vm_get_long_proto;
 				}
 				// get non-constant init from Lua stack.
-				if(CValues_get(vals, 0) == NULL) {
-					call2=Builder.CreateCall2(get_func,func_L,
-						llvm::ConstantInt::get(getCtx(), llvm::APInt(32,(GETARG_A(op_intr) + 0))), "for_init");
-					CValues_set(vals, 0,  call2);
+				if(CValues_get(vals, 0)->type == VOID) {
+					CValue_integer(&val, (GETARG_A(op_intr) + 0));
+					CodeBlock_call(ip, &call2, "for_init", get_func, &(func_L), &(val), NULL);
+					CValues_set(vals, 0,  &call2);
 				}
 				init = CValues_get(vals, 0);
 				// get non-constant limit from Lua stack.
-				if(CValues_get(vals, 1) == NULL) {
-					call2=Builder.CreateCall2(get_func,func_L,
-						llvm::ConstantInt::get(getCtx(), llvm::APInt(32,(GETARG_A(op_intr) + 1))), "for_limit");
-					CValues_set(vals, 1,  call2);
+				if(CValues_get(vals, 1)->type == VOID) {
+					CValue_integer(&val, (GETARG_A(op_intr) + 1));
+					CodeBlock_call(ip, &call2, "for_limit", get_func, &(func_L), &(val), NULL);
+					CValues_set(vals, 1,  &call2);
 				}
 				// get non-constant step from Lua stack.
-				if(CValues_get(vals, 2) == NULL) {
-					call2=Builder.CreateCall2(get_func,func_L,
-						llvm::ConstantInt::get(getCtx(), llvm::APInt(32,(GETARG_A(op_intr) + 2))), "for_step");
-					CValues_set(vals, 2,  call2);
+				if(CValues_get(vals, 2)->type == VOID) {
+					CValue_integer(&val, (GETARG_A(op_intr) + 2));
+					CodeBlock_call(ip, &call2, "for_step", get_func, &(func_L), &(val), NULL);
+					CValues_set(vals, 2,  &call2);
 				}
 				// get for loop 'idx' variable.
-				assert(CValues_get(vals, 3) != NULL);
+				assert(CValues_get(vals, 3)->type != VOID);
 				idx_var = CValues_get(vals, 3);
-				Builder.CreateStore(init, idx_var); // store 'for_init' value.
-				CValues_set(vals, 0, init);
+				CodeBlock_store(ip, idx_var, init); // store 'for_init' value.
 				current_block = NULL; // have terminator
 				branch = BRANCH_NONE;
 				break;
@@ -1213,8 +1559,7 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				break;
 			}
 			case OP_RETURN: {
-				call->setTailCall(true);
-				Builder.CreateRet(call);
+				CodeBlock_ret(ip, &call);
 				branch = BRANCH_NONE;
 				current_block = NULL; // have terminator
 				break;
@@ -1228,7 +1573,7 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 			CodeBlock_jump(ip, op_blocks[branch]);
 			current_block = NULL; // have terminator
 		} else if(branch == BRANCH_COND) {
-			Builder.CreateCondBr(brcond, true_block, false_block);
+			CodeBlock_cond_jump(ip, brcond, true_block, false_block);
 			current_block = NULL; // have terminator
 		}
 	}
@@ -1244,7 +1589,6 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 		luaM_reallocvector(L, p->upvalues, p->sizeupvalues, 0, TString *);
 		p->sizeupvalues = 0;
 	}
-#endif
 	/* dump functions C code. */
 	CFunc_dump(func, compiler->file);
 cleanup:
