@@ -23,10 +23,6 @@
   MIT License: http://www.opensource.org/licenses/mit-license.php
 */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <string.h>
 #include "lua_core.h"
 #include "lobject.h"
@@ -161,8 +157,4 @@ LUALIB_API int load_compiled_module(lua_State *L, jit_proto *p) {
 
 	return 1;
 }
-
-#ifdef __cplusplus
-}
-#endif
 

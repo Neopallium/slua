@@ -22,9 +22,20 @@
   MIT License: http://www.opensource.org/licenses/mit-license.php
 */
 
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "slua_compiler.h"
 #include "slua_dumper.h"
 
-void slua_dumper_dump(const char *output, lua_State *L, Proto *p, int stripping) {
+#include "lstate.h"
+#include "load_jit_proto.h"
+
+void slua_dumper_dump(FILE *file, const char *output, lua_State *L, Proto *p, int stripping) {
+	SLuaCompiler *compiler = slua_new_compiler(L, file, stripping);
+
+	slua_compiler_compile_all(compiler, p);
+	slua_free_compiler(compiler);
 }
 

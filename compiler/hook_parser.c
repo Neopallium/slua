@@ -24,40 +24,7 @@ int slua_precall_lua (lua_State *L, StkId func, int nresults) {
 
 #include "slua_compiler.h"
 
-#define luaD_protectedparser luaD_protectedparser_old
 #include "ldo.c"
-#undef luaD_protectedparser
-
-static void slua_f_parser (lua_State *L, void *ud) {
-  int i;
-  Proto *tf;
-  Closure *cl;
-  struct SParser *p = cast(struct SParser *, ud);
-  int c = luaZ_lookahead(p->z);
-  luaC_checkGC(L);
-  set_block_gc(L);  /* stop collector during parsing */
-  tf = ((c == LUA_SIGNATURE[0]) ? luaU_undump : luaY_parser)(L, p->z,
-                                                             &p->buff, p->name);
-  slua_compiler_compile_all(L, tf);
-  cl = luaF_newLclosure(L, tf->nups, hvalue(gt(L)));
-  cl->l.p = tf;
-  for (i = 0; i < tf->nups; i++)  /* initialize eventual upvalues */
-    cl->l.upvals[i] = luaF_newupval(L);
-  setclvalue(L, L->top, cl);
-  incr_top(L);
-  unset_block_gc(L);
-}
-
-
-int luaD_protectedparser (lua_State *L, ZIO *z, const char *name) {
-  struct SParser p;
-  int status;
-  p.z = z; p.name = name;
-  luaZ_initbuffer(L, &p.buff);
-  status = luaD_pcall(L, slua_f_parser, &p, savestack(L, L->top), L->errfunc);
-  luaZ_freebuffer(L, &p.buff);
-  return status;
-}
 
 int slua_precall_jit (lua_State *L, StkId func, int nresults) {
   Closure *cl;
@@ -132,10 +99,6 @@ int slua_precall_lua (lua_State *L, StkId func, int nresults) {
 
   cl = clvalue(func);
   p = cl->l.p;
-  /* check if Function needs to be compiled. */
-  if(p->jit_func == NULL) {
-    slua_compiler_compile(L, p);
-  }
   if(p->jit_func != NULL) {
     if (!p->is_vararg) {  /* no varargs? */
       cl->l.precall = slua_precall_jit;

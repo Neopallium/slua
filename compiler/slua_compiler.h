@@ -32,16 +32,21 @@
 
 #include "lobject.h"
 
+typedef struct SLuaCompiler SLuaCompiler;
+
+struct SLuaCompiler {
+	lua_State *L;
+	FILE      *file;
+	int       strip;
+};
+
 int slua_compiler_main();
-void slua_new_compiler(lua_State *L);
-void slua_free_compiler(lua_State *L);
-void slua_compiler_compile(lua_State *L, Proto *p);
-void slua_compiler_compile_all(lua_State *L, Proto *p);
-void slua_compiler_free(lua_State *L, Proto *p);
+SLuaCompiler *slua_new_compiler(lua_State *L, FILE *file, int strip);
+void slua_free_compiler(SLuaCompiler *compiler);
+void slua_compiler_compile(SLuaCompiler *compiler, Proto *p);
+void slua_compiler_compile_all(SLuaCompiler *compiler, Proto *p);
 
 extern int slua_precall_jit (lua_State *L, StkId func, int nresults);
 extern int slua_precall_lua (lua_State *L, StkId func, int nresults);
 
-
 #endif
-

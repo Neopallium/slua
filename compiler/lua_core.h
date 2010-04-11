@@ -19,13 +19,11 @@ extern "C" {
 #define JIT_SUPPORT
 
 /* extra variables for global_State */
-#define JIT_COMPILER_STATE \
-	void *slua_compiler;
+#define JIT_COMPILER_STATE
 
 /* state */
 #define JIT_PROTO_STATE \
-	lua_CFunction jit_func; /* jit compiled function */ \
-	void *func_ref; /* Reference to Function class */
+	lua_CFunction jit_func; /* jit compiled function */
 
 #include <lua.h>
 /* extern all lua core functions. */

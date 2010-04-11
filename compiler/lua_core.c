@@ -33,13 +33,12 @@ extern "C" {
 #include "slua_compiler.h"
 
 void slua_newproto (lua_State *L, Proto *f);
-void slua_freeproto (lua_State *L, Proto *f);
 
 /* functions */
-#define JIT_NEW_STATE(L) slua_new_compiler(L)
-#define JIT_CLOSE_STATE(L) slua_free_compiler(L)
+#define JIT_NEW_STATE(L)
+#define JIT_CLOSE_STATE(L)
 #define JIT_NEWPROTO(L,f) slua_newproto(L,f)
-#define JIT_FREEPROTO(L,f) slua_freeproto(L,f)
+#define JIT_FREEPROTO(L,f)
 #define JIT_PRECALL slua_precall_lua
 
 #include "lapi.c"
@@ -77,11 +76,6 @@ void slua_freeproto (lua_State *L, Proto *f);
 void slua_newproto (lua_State *L, Proto *f) {
 	(void)L;
 	f->jit_func = NULL;
-	f->func_ref = NULL;
-}
-
-void slua_freeproto (lua_State *L, Proto *f) {
-	slua_compiler_free(L, f);
 }
 
 #ifdef __cplusplus

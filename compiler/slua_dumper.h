@@ -27,17 +27,8 @@
 
 #include "lua_core.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "lobject.h"
 
-void slua_dumper_dump(const char *output, lua_State *L, Proto *p, int stripping);
-
-#ifdef __cplusplus
-}
-#endif
+void slua_dumper_dump(FILE *file, const char *output, lua_State *L, Proto *p, int stripping);
 
 #endif
-

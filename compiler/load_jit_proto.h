@@ -27,10 +27,6 @@
 #ifndef load_jit_proto_h
 #define load_jit_proto_h
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "lobject.h"
 #include <stdint.h>
 
@@ -91,9 +87,4 @@ LUALIB_API int load_compiled_module(lua_State *L, jit_proto *p);
 
 extern jit_proto jit_proto_init;
 
-#ifdef __cplusplus
-}
 #endif
-
-#endif
-

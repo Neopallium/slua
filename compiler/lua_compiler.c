@@ -4,10 +4,6 @@
 ** See Copyright Notice in lua.h
 */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,7 +68,7 @@ static void usage(const char* message) {
   "usage: %s [options] [filenames].\n"
   "Available options are:\n"
   "  -        process stdin\n"
-  "  -bc      output LLVM bitcode\n"
+  "  -c       output C code\n"
   "  -l       list\n"
   "  -L name  preload lua library " LUA_QL("name") "\n"
   "  -o name  output to file " LUA_QL("name") " (default is \"%s\")\n"
@@ -99,7 +95,7 @@ static int doargs(int argc, char* argv[]) {
       break;
     } else if (IS("-")) 		/* end of options; use stdin */
       break;
-    else if (IS("-c")) {		/* output LLVM bitcode */
+    else if (IS("-c")) {		/* output C code */
       c_code=1;
       dumping=0;
     } else if (IS("-L")) {	/* preload library */
@@ -268,8 +264,10 @@ static int pmain(lua_State* L) {
   f=combine(L, scripts);
   if (listing) luaU_print(f,listing>1);
   if (c_code && !parse_only) {
+    FILE* D= (output==NULL) ? stdout : fopen(output,"wb");
+    if (D==NULL) cannot("open");
     lua_lock(L);
-    slua_dumper_dump(output, L, f, stripping);
+    slua_dumper_dump(D, output, L, f, stripping);
     lua_unlock(L);
   }
   if (dumping && !parse_only) {
@@ -298,8 +296,4 @@ int luac_main(int argc, char* argv[]) {
   lua_close(L);
   return EXIT_SUCCESS;
 }
-
-#ifdef __cplusplus
-}
-#endif
 

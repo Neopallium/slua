@@ -8,10 +8,6 @@
  * Most of this file is from lua.c
  */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -191,8 +187,4 @@ int main (int argc, char **argv) {
   lua_close(L);
   return (status || s.status) ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
