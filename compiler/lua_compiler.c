@@ -269,6 +269,8 @@ static int pmain(lua_State* L) {
     lua_lock(L);
     slua_dumper_dump(D, output, L, f, stripping);
     lua_unlock(L);
+    if (ferror(D)) cannot("write");
+    if (fclose(D)) cannot("close");
   }
   if (dumping && !parse_only) {
     FILE* D= (output==NULL) ? stdout : fopen(output,"wb");

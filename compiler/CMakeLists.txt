@@ -9,6 +9,7 @@ set(CORE_LUA_SRC
 )
 set(SLUA_COMMON_SRC
 	slua_compiler.c
+	codegen.c
 	${CORE_LUA_SRC}
 )
 set(SLUA_SRC
