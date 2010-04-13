@@ -257,7 +257,38 @@ void slua_compiler_compile_all(SLuaCompiler *compiler, Proto *parent) {
 	}
 }
 
-#define BUF_LEN 8192
+#define MAX_FUNC_NAME_LEN 33
+int slua_compiler_proto_name(Proto *p, char *buf, int buf_len) {
+	int len = 0;
+	int rc;
+	int i;
+
+	assert(buf_len > MAX_FUNC_NAME_LEN);
+	// convert proto source info into function name.
+	strncpy(buf, getstr(p->source), MAX_FUNC_NAME_LEN);
+	// replace non-alphanum characters with '_'
+	for(i = 0; i < MAX_FUNC_NAME_LEN; i++) {
+		char c = buf[i];
+		if(c == '\0') break;
+		if((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+			continue;
+		}
+		if(c == '\n' || c == '\r') {
+			buf[i] = '\0';
+			break;
+		}
+		buf[i] = '_';
+	}
+	buf[i] = '\0';
+	len = i;
+	rc = snprintf(buf + len, buf_len - len ,"_%d_%d",p->linedefined, p->lastlinedefined);
+	if(rc <= 0) return -1;
+	len += rc;
+
+	return len;
+}
+
+#define BUF_LEN 512
 void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 	lua_State *L = compiler->L;
 	Instruction *code=p->code;
@@ -296,23 +327,7 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 	bool *need_op_block = NULL;
 
 	// create function.
-	strncpy(buf, getstr(p->source), 33);
-	// replace non-alphanum characters with '_'
-	for(i = 0; i < 33; i++) {
-		char c = buf[i];
-		if(c == '\0') break;
-		if((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
-			continue;
-		}
-		if(c == '\n' || c == '\r') {
-			buf[i] = '\0';
-			break;
-		}
-		buf[i] = '_';
-	}
-	buf[i] = '\0';
-	len = i;
-	snprintf(buf + len, BUF_LEN - len ,"_%d_%d",p->linedefined, p->lastlinedefined);
+	len = slua_compiler_proto_name(p, buf, BUF_LEN);
 	func = new_CFunc("int", buf);
 	CFunc_create_param(func, &func_L, "lua_State *", "L");
 	args = new_CValues(0);
@@ -326,12 +341,11 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 	need_op_block = (bool *)calloc(code_len, sizeof(bool));
 	// get LClosure & constants.
 	CodeBlock_call(ip, &func_cl, "cl", vm_get_current_closure_proto, &(func_L), NULL);
-	CodeBlock_call(ip, &func_k, "k", vm_get_current_closure_proto, &(func_cl), NULL);
+	CodeBlock_call(ip, &func_k, "k", vm_get_current_constants_proto, &(func_cl), NULL);
 
 	// find all jump/branch destinations and create a new basic block at that opcode.
 	// also build hints for some opcodes.
 	for(i = 0; i < code_len; i++) {
-		//need_op_block[i] = true; /* TODO: remove. */
 		op_intr=code[i];
 		opcode = GET_OPCODE(op_intr);
 		// combind simple ops into one function call.
@@ -447,11 +461,11 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 					// create for_idx OP_FORPREP will inialize it.
 					op_hints[branch] = HINT_FOR_N_N_N;
 					if(all_longs) {
-						CFunc_var(func, &val, "uint64_t", "for_idx");
+						CFunc_var(func, &val, "uint64_t", "for_idx", NULL);
 						CValues_set(vals, 3,  &val);
 						op_hints[branch] |= HINT_USE_LONG;
 					} else {
-						CFunc_var(func, &val, "double", "for_idx");
+						CFunc_var(func, &val, "double", "for_idx", NULL);
 						CValues_set(vals, 3,  &val);
 					}
 					op_values[branch] = vals;
@@ -632,9 +646,10 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 				// get for loop 'idx' variable.
 				step = CValues_get(vals, 2);
 				idx_var = CValues_get(vals, 3);
-				assert(idx_var->type != VOID);
+				assert(idx_var != NULL);
 				incr_block = current_block;
 				CodeBlock_add(ip, idx_var, idx_var, step);
+				CValues_set(vals, 0, idx_var);
 				// create extra BasicBlock for vm_OP_FORLOOP_*
 				snprintf(buf,128,"op_block_%s_%d_loop_test",luaP_opnames[opcode],i);
 				loop_test = CFunc_create_block(func, buf);
@@ -861,26 +876,26 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 					get_func = vm_get_long_proto;
 				}
 				// get non-constant init from Lua stack.
-				if(CValues_get(vals, 0)->type == VOID) {
+				if(CValues_get(vals, 0) == NULL) {
 					CValue_integer(&val, (GETARG_A(op_intr) + 0));
 					CodeBlock_call(ip, &call2, "for_init", get_func, &(func_L), &(val), NULL);
 					CValues_set(vals, 0,  &call2);
 				}
 				init = CValues_get(vals, 0);
 				// get non-constant limit from Lua stack.
-				if(CValues_get(vals, 1)->type == VOID) {
+				if(CValues_get(vals, 1) == NULL) {
 					CValue_integer(&val, (GETARG_A(op_intr) + 1));
 					CodeBlock_call(ip, &call2, "for_limit", get_func, &(func_L), &(val), NULL);
 					CValues_set(vals, 1,  &call2);
 				}
 				// get non-constant step from Lua stack.
-				if(CValues_get(vals, 2)->type == VOID) {
+				if(CValues_get(vals, 2) == NULL) {
 					CValue_integer(&val, (GETARG_A(op_intr) + 2));
 					CodeBlock_call(ip, &call2, "for_step", get_func, &(func_L), &(val), NULL);
 					CValues_set(vals, 2,  &call2);
 				}
 				// get for loop 'idx' variable.
-				assert(CValues_get(vals, 3)->type != VOID);
+				assert(CValues_get(vals, 3) != NULL);
 				idx_var = CValues_get(vals, 3);
 				CodeBlock_store(ip, idx_var, init); // store 'for_init' value.
 				current_block = NULL; // have terminator

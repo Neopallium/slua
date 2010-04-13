@@ -23,6 +23,9 @@
 
 #include "load_jit_proto.h"
 
+#define ENABLE_PARSER_HOOK 0
+#include "hook_parser.c"
+
 static lua_State *globalL = NULL;
 
 static const char *progname = LUA_PROGNAME;

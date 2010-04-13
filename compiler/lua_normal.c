@@ -45,7 +45,3 @@
 #include "ldo.c"
 #include "lua.c"
 
-#ifdef __cplusplus
-}
-#endif
-

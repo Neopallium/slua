@@ -46,6 +46,8 @@ void slua_free_compiler(SLuaCompiler *compiler);
 void slua_compiler_compile(SLuaCompiler *compiler, Proto *p);
 void slua_compiler_compile_all(SLuaCompiler *compiler, Proto *p);
 
+int slua_compiler_proto_name(Proto *p, char *buf, int buf_len);
+
 extern int slua_precall_jit (lua_State *L, StkId func, int nresults);
 extern int slua_precall_lua (lua_State *L, StkId func, int nresults);
 

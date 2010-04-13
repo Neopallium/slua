@@ -39,11 +39,10 @@ typedef enum CValueType CValueType;
 typedef struct CValue CValue;
 typedef struct CValues CValues;
 typedef struct CFuncProto CFuncProto;
+typedef enum CScopeType CScopeType;
+typedef struct CScope CScope;
 typedef struct CFunc CFunc;
 typedef struct OPFunc OPFunc;
-
-extern void CFunc_var(CFunc *func, CValue *val, const char *type, const char *name);
-extern int CodeBlock_printf(CodeBlock *block, const char *fmt, ...);
 
 /**
  *
@@ -72,6 +71,7 @@ enum CValueType {
 	BOOLEAN,
 	DOUBLE,
 	STRING,
+	CODE,
 	VARIABLE,
 };
 
@@ -92,6 +92,7 @@ extern void CValue_boolean(CValue *val, int is_true);
 extern void CValue_integer(CValue *val, uint64_t num);
 extern void CValue_double(CValue *val, double dnum);
 extern void CValue_string(CValue *val, const char *str);
+extern void CValue_code(CValue *val, const char *code);
 extern void CValue_variable(CValue *val, const char *type, const char *name);
 extern void CValue_set(CValue *val, const CValue *new_val);
 
@@ -139,14 +140,15 @@ extern int CFuncProto_dump(CFuncProto *proto, FILE *file, bool define);
  *
  */
 struct CodeBlock {
-	CFunc *parent;
-	char *name;  /* code block label. */
-	char *code;  /* code block buffer. */
-	int  len;    /* length of code written into this block. */
-	int  size;   /* size of code block buffer. */
+	CScope    *scope; /**< code block's scope. */
+	CodeBlock *next;  /**< next code block. */
+	char      *name;  /**< code block label. */
+	char      *code;  /**< code block buffer. */
+	int       len;    /**< length of code written into this block. */
+	int       size;   /**< size of code block buffer. */
 };
 
-extern CodeBlock *new_CodeBlock(CFunc *parent, const char *name, int write_label);
+extern CodeBlock *new_CodeBlock(CScope *scope, const char *name, int write_label);
 extern void free_CodeBlock(CodeBlock *block);
 extern int CodeBlock_dump(CodeBlock *block, FILE *file);
 extern int CodeBlock_printf(CodeBlock *block, const char *fmt, ...);
@@ -180,20 +182,53 @@ extern void CodeBlock_binop(CodeBlock *block,
 #define CodeBlock_sub(block, var, val1, val2) \
 	CodeBlock_binop(block, var, val1, "-", val2)
 
+extern void CodeBlock_var(CodeBlock *block, CValue *val, const char *type, const char *name,
+	const CValue *init, bool is_extern);
+
+/**
+ *
+ * CScope
+ *
+ */
+enum CScopeType {
+	SCOPE_FILE = 0,
+	SCOPE_FUNC,
+};
+
+struct CScope {
+	CodeBlock  *head;
+	CodeBlock  *tail;
+	int        len;
+	int        vars;
+	CScopeType type;
+};
+
+extern CScope *new_CScope();
+
+extern void free_CScope(CScope *scope);
+
+extern CodeBlock *CScope_create_block(CScope *scope, const char *name, CodeBlock *after);
+
+extern void CScope_var(CScope *scope, CValue *val, const char *type, const char *name);
+
+extern int CScope_dump(CScope *scope, FILE *file);
+
+extern bool CScope_is_func(CScope *scope);
+
+extern bool CScope_is_file(CScope *scope);
+
 /**
  *
  * CFunc
  *
  */
 struct CFunc {
+	CScope     scope;
 	CFuncProto *proto;
-	CodeBlock *prolog;
-	CodeBlock **blocks;
-	int       len;
-	int       size;
-	int       vars;
+	CodeBlock  *prolog;
 };
 
+#define CScope_to_CFunc(scope) ((CFunc *)scope)
 extern CFunc *new_CFunc(const char *ret_type, const char *name);
 
 extern void free_CFunc(CFunc *func);
@@ -202,7 +237,8 @@ extern CodeBlock *CFunc_create_block(CFunc *func, const char *name);
 
 extern void CFunc_create_param(CFunc *func, CValue *val, const char *type, const char *name);
 
-extern void CFunc_var(CFunc *func, CValue *val, const char *type, const char *name);
+extern void CFunc_var(CFunc *func, CValue *val, const char *type, const char *name,
+	const CValue *init);
 
 extern int CFunc_dump(CFunc *func, FILE *file);
 

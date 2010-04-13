@@ -77,6 +77,10 @@ static void clear_CValue(CValue *val) {
 		free(val->data.str);
 		val->data.str = NULL;
 		break;
+	case CODE:
+		free(val->data.str);
+		val->data.str = NULL;
+		break;
 	case VARIABLE:
 		CVariable_unref(val->data.var);
 		val->data.var = NULL;
@@ -107,13 +111,17 @@ void CValue_double(CValue *val, double dnum) {
 	val->data.dnum = dnum;
 }
 
-/*
+void CValue_code(CValue *val, const char *code) {
+	clear_CValue(val);
+	val->type = CODE;
+	val->data.str = strdup(code);
+}
+
 void CValue_string(CValue *val, const char *str) {
 	clear_CValue(val);
 	val->type = STRING;
 	val->data.str = strdup(str);
 }
-*/
 
 void CValue_variable(CValue *val, const char *type, const char *name) {
 	clear_CValue(val);
@@ -132,6 +140,7 @@ void CValue_set(CValue *val, const CValue *new_val) {
 		val->data = new_val->data;
 		break;
 	case STRING:
+	case CODE:
 		val->data.str = strdup(new_val->data.str);
 		break;
 	case VARIABLE:
@@ -200,14 +209,12 @@ void CValues_push_back(CValues *values, const CValue *val) {
 	values->len += 1;
 }
 
-/*
 const CValue *CValues_pop_back(CValues *values) {
 	int idx;
 	values->len -= 1;
 	idx = values->len;
 	return &(values->values[idx]);
 }
-*/
 
 /**
  *
@@ -326,22 +333,25 @@ static void grow_CodeBlock(CodeBlock *block, int need) {
 	block->size = new_size;
 }
 
-CodeBlock *new_CodeBlock(CFunc *parent, const char *name, int write_label) {
+CodeBlock *new_CodeBlock(CScope *scope, const char *name, int write_label) {
 	CodeBlock *block = (CodeBlock *)malloc(sizeof(CodeBlock));
-	block->parent = parent;
+	block->scope = scope;
+	block->next = NULL;
 	block->name = strdup(name);
 	block->code = NULL;
 	block->len = 0;
 	block->size = 0;
 	grow_CodeBlock(block, 0);
 	/* write goto label for code block. */
-	if(write_label) {
+	if(write_label && CScope_is_func(scope)) {
 		CodeBlock_printf(block, "block_%s:\n", name);
 	}
 	return block;
 }
 
 void free_CodeBlock(CodeBlock *block) {
+	if(block == NULL) return;
+	if(block->next) free_CodeBlock(block->next);
 	free(block->name);
 	free(block->code);
 	free(block);
@@ -403,6 +413,9 @@ void CodeBlock_write_value(CodeBlock *block, const CValue *val) {
 	case STRING:
 		CodeBlock_printf(block, "\"%s\"", val->data.str);
 		break;
+	case CODE:
+		CodeBlock_printf(block, "%s", val->data.str);
+		break;
 	case VARIABLE:
 		CodeBlock_printf(block, "%s", val->data.var->name);
 		break;
@@ -410,12 +423,14 @@ void CodeBlock_write_value(CodeBlock *block, const CValue *val) {
 }
 
 void CodeBlock_jump(CodeBlock *block, CodeBlock *desc) {
+	assert(CScope_is_func(block->scope));
 	CodeBlock_printf(block, "\tgoto block_%s;\n", desc->name);
 }
 
 void CodeBlock_cond_jump(CodeBlock *block, CValue *cond, CodeBlock *true_block,
 	CodeBlock *false_block)
 {
+	assert(CScope_is_func(block->scope));
 	CodeBlock_printf(block, "\tif(");
 		CodeBlock_write_value(block, cond);
 	CodeBlock_printf(block, ") {\n\t");
@@ -432,10 +447,11 @@ void CodeBlock_call_args(CodeBlock *block, CValue *call, const char *ret,
 	bool need_comma = false;
 	int len;
 	int i;
+	assert(CScope_is_func(block->scope));
 
 	if(call != NULL && strncasecmp("void", proto->ret_type, 4) != 0) {
 		if(ret == NULL) ret = "ret_val";
-		CFunc_var(block->parent, call, proto->ret_type, ret);
+		CFunc_var(CScope_to_CFunc(block->scope), call, proto->ret_type, ret, NULL);
 		CodeBlock_printf(block, "\t%s = ", call->data.var->name);
 	} else {
 		assert(call == NULL);
@@ -460,10 +476,11 @@ void CodeBlock_call(CodeBlock *block, CValue *call, const char *ret, CFuncProto 
 	va_list ap;
 	const CValue *param;
 	bool need_comma = false;
+	assert(CScope_is_func(block->scope));
 
 	if(call != NULL && strncasecmp("void", proto->ret_type, 4) != 0) {
 		if(ret == NULL) ret = "ret_val";
-		CFunc_var(block->parent, call, proto->ret_type, ret);
+		CFunc_var(CScope_to_CFunc(block->scope), call, proto->ret_type, ret, NULL);
 		CodeBlock_printf(block, "\t%s = ", call->data.var->name);
 	} else {
 		assert(call == NULL);
@@ -484,12 +501,14 @@ void CodeBlock_call(CodeBlock *block, CValue *call, const char *ret, CFuncProto 
 }
 
 void CodeBlock_ret(CodeBlock *block, CValue *ret) {
+	assert(CScope_is_func(block->scope));
 	CodeBlock_printf(block, "\treturn ");
 	CodeBlock_write_value(block, ret);
 	CodeBlock_printf(block, ";\n");
 }
 
 void CodeBlock_store(CodeBlock *block, const CValue *var, const CValue *val) {
+	assert(CScope_is_func(block->scope));
 	CodeBlock_printf(block, "\t%s = (", var->data.var->name);
 	CodeBlock_write_value(block, val);
 	CodeBlock_printf(block, ");\n");
@@ -498,7 +517,8 @@ void CodeBlock_store(CodeBlock *block, const CValue *var, const CValue *val) {
 void CodeBlock_compare(CodeBlock *block,
 	CValue *var, const char *name, const CValue *val1, char *cmp, const CValue *val2)
 {
-	CFunc_var(block->parent, var, "int", name);
+	assert(CScope_is_func(block->scope));
+	CFunc_var(CScope_to_CFunc(block->scope), var, "int", name, NULL);
 	CodeBlock_printf(block, "\t%s = (", var->data.var->name);
 	CodeBlock_write_value(block, val1);
 	CodeBlock_printf(block, " %s ", cmp);
@@ -509,6 +529,7 @@ void CodeBlock_compare(CodeBlock *block,
 void CodeBlock_binop(CodeBlock *block,
 	const CValue *var, const CValue *val1, char *op, const CValue *val2)
 {
+	assert(CScope_is_func(block->scope));
 	CodeBlock_printf(block, "\t%s = (", var->data.var->name);
 	CodeBlock_write_value(block, val1);
 	CodeBlock_printf(block, " %s ", op);
@@ -516,78 +537,147 @@ void CodeBlock_binop(CodeBlock *block,
 	CodeBlock_printf(block, ");\n");
 }
 
+void CodeBlock_var(CodeBlock *block, CValue *val, const char *type, const char *name,
+	const CValue *init, bool is_extern)
+{
+	if(CScope_is_func(block->scope)) {
+		CFunc_var(CScope_to_CFunc(block->scope), val, type, name, init);
+	} else {
+		assert(CScope_is_file(block->scope));
+		CScope_var(block->scope, val, type, name);
+		CodeBlock_printf(block, "%s %s %s = ", (is_extern) ? "extern" : "static",
+			type, val->data.var->name);
+		CodeBlock_write_value(block, init);
+		CodeBlock_printf(block, ";\n");
+	}
+}
+
+/**
+ *
+ * CScope
+ *
+ */
+static void init_CScope(CScope *scope, CScopeType type) {
+	scope->head = NULL;
+	scope->tail = NULL;
+	scope->len = 0;
+	scope->vars = 0;
+	scope->type = type;
+}
+
+CScope *new_CScope() {
+	CScope *scope = (CScope *)malloc(sizeof(CScope));
+	init_CScope(scope, SCOPE_FILE);
+	return scope;
+}
+
+static void cleanup_CScope(CScope *scope) {
+	free_CodeBlock(scope->head);
+	scope->head = NULL;
+	scope->tail = NULL;
+}
+
+void free_CScope(CScope *scope) {
+	cleanup_CScope(scope);
+	free(scope);
+}
+
+CodeBlock *CScope_create_block(CScope *scope, const char *name, CodeBlock *after) {
+	CodeBlock *block;
+	scope->len += 1;
+	block = new_CodeBlock(scope, name, 1);
+	if(after) {
+		block->next = after->next;
+		after->next = block;
+	} else {
+		if(scope->tail == NULL) {
+			scope->tail = block;
+			scope->head = block;
+		} else {
+			scope->tail->next = block;
+			scope->tail = block;
+		}
+	}
+	return block;
+}
+
+extern void CScope_var(CScope *scope, CValue *val, const char *type, const char *name) {
+	char var_name[8192];
+	int var_idx = scope->vars++;
+#if USE_VAR_PREFIX
+	snprintf(var_name, 8192, "var_%s%d", name, var_idx);
+#else
+	snprintf(var_name, 8192, "%s%d", name, var_idx);
+#endif
+	CValue_variable(val, type, var_name);
+}
+
+int CScope_dump(CScope *scope, FILE *file) {
+	CodeBlock *cur;
+	int rc = 0;
+	int total = 0;
+	/* dump block code. */
+	cur = scope->head;
+	while(cur != NULL) {
+		rc = CodeBlock_dump(cur, file);
+		if(rc < 0) return -1;
+		total += rc;
+		cur = cur->next;
+	}
+	return total;
+}
+
+bool CScope_is_func(CScope *scope) {
+	return (scope->type == SCOPE_FUNC);
+}
+
+bool CScope_is_file(CScope *scope) {
+	return (scope->type == SCOPE_FILE);
+}
+
 /**
  *
  * CFunc
  *
  */
-static void grow_CFunc(CFunc *func, int need) {
-	int new_size = func->len + need;
-	int i;
-	if(new_size < func->size) return;
-	func->blocks = (CodeBlock **)realloc(func->blocks, new_size * sizeof(CodeBlock));
-	/* clear new func. */
-	for(i = func->size; i < new_size; i++) {
-		func->blocks[i] = NULL;
-	}
-	func->size = new_size;
-}
-
 CFunc *new_CFunc(const char *ret_type, const char *name) {
 	CFunc *func = (CFunc *)malloc(sizeof(CFunc));
 	func->proto = new_CFuncProto(ret_type, name, false);
-	func->blocks = NULL;
-	func->len = 0;
-	func->size = 0;
-	func->vars = 0;
-	grow_CFunc(func, 0);
+	init_CScope(&(func->scope), SCOPE_FUNC);
 	/* create prolog block. */
-	func->prolog = new_CodeBlock(func, "prolog", 0);
+	func->prolog = new_CodeBlock(&(func->scope), "prolog", 0);
 	return func;
 }
 
 void free_CFunc(CFunc *func) {
-	int i;
-	for(i = func->size - 1; i >= 0; i--) {
-		free_CodeBlock(func->blocks[i]);
-	}
+	cleanup_CScope(&(func->scope));
 	free_CFuncProto(func->proto);
 	free_CodeBlock(func->prolog);
-	free(func->blocks);
 	free(func);
 }
 
 CodeBlock *CFunc_create_block(CFunc *func, const char *name) {
-	CodeBlock *block;
-	int idx = func->len;
-	grow_CFunc(func, 1);
-	func->len += 1;
-	block = new_CodeBlock(func, name, 1);
-	func->blocks[idx] = block;
-	return block;
+	return CScope_create_block(&(func->scope), name, NULL);
 }
 
 void CFunc_create_param(CFunc *func, CValue *val, const char *type, const char *name) {
 	CFuncProto_create_param(func->proto, val, type, name);
 }
 
-void CFunc_var(CFunc *func, CValue *val, const char *type, const char *name) {
-	char var_name[8192];
-	int var_idx = func->vars++;
-#if USE_VAR_PREFIX
-	snprintf(var_name, 8192, "var_%s%d", name, var_idx);
-#else
-	snprintf(var_name, 8192, "%s%d", name, var_idx);
-#endif
-	CodeBlock_printf(func->prolog, "\t%s %s;\n", type, var_name);
-	CValue_variable(val, type, var_name);
+void CFunc_var(CFunc *func, CValue *val, const char *type, const char *name, const CValue *init) {
+	CScope_var(&(func->scope), val, type, name);
+	if(init) {
+		CodeBlock_printf(func->prolog, "\t%s %s = ", type, val->data.var->name);
+		CodeBlock_write_value(func->prolog, init);
+		CodeBlock_printf(func->prolog, ";\n");
+	} else {
+		CodeBlock_printf(func->prolog, "\t%s %s;\n", type, val->data.var->name);
+	}
 }
 
 int CFunc_dump(CFunc *func, FILE *file) {
-	int len;
 	int rc = 0;
 	int total = 0;
-	int i;
 	/* gen function prototype. */
 	rc = CFuncProto_dump(func->proto, file, false);
 	if(rc < 0) return -1;
@@ -599,12 +689,9 @@ int CFunc_dump(CFunc *func, FILE *file) {
 	rc = CodeBlock_dump(func->prolog, file);
 	if(rc < 0) return -1;
 	total += rc;
-	len = func->len;
-	for(i = 0; i < len; i++) {
-		rc = CodeBlock_dump(func->blocks[i], file);
-		if(rc < 0) return -1;
-		total += rc;
-	}
+	/* dump function code blocks. */
+	CScope_dump(&(func->scope), file);
+	/* end function. */
 	rc = fprintf(file, "}\n\n");
 	if(rc < 0) return -1;
 	total += rc;

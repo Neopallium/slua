@@ -2,10 +2,6 @@
 ** See Copyright Notice in lua.h
 */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*
  * lua_vm_ops.c -- Lua ops functions for use by LLVM IR gen.
  *
@@ -28,31 +24,31 @@ extern "C" {
 #include <stdio.h>
 #include <assert.h>
 
-void vm_OP_MOVE(lua_State *L, int a, int b) {
+OP_INLINE void vm_OP_MOVE(lua_State *L, int a, int b) {
   TValue *base = L->base;
   TValue *ra = base + a;
   setobjs2s(L, ra, base + b);
 }
 
-void vm_OP_LOADK(lua_State *L, TValue *k, int a, int bx) {
+OP_INLINE void vm_OP_LOADK(lua_State *L, TValue *k, int a, int bx) {
   TValue *base = L->base;
   TValue *ra = base + a;
   setobj2s(L, ra, k + bx);
 }
 
-void vm_OP_LOADK_N(lua_State *L, int a, lua_Number nb) {
+OP_INLINE void vm_OP_LOADK_N(lua_State *L, int a, lua_Number nb) {
   TValue *base = L->base;
   TValue *ra = base + a;
   setnvalue(ra, nb);
 }
 
-void vm_OP_LOADBOOL(lua_State *L, int a, int b, int c) {
+OP_INLINE void vm_OP_LOADBOOL(lua_State *L, int a, int b, int c) {
   TValue *base = L->base;
   TValue *ra = base + a;
   setbvalue(ra, b);
 }
 
-void vm_OP_LOADNIL(lua_State *L, int a, int b) {
+OP_INLINE void vm_OP_LOADNIL(lua_State *L, int a, int b) {
   TValue *base = L->base;
   TValue *ra = base + a;
   TValue *rb = base + b;
@@ -61,13 +57,13 @@ void vm_OP_LOADNIL(lua_State *L, int a, int b) {
   } while (rb >= ra);
 }
 
-void vm_OP_GETUPVAL(lua_State *L, LClosure *cl, int a, int b) {
+OP_INLINE void vm_OP_GETUPVAL(lua_State *L, LClosure *cl, int a, int b) {
   TValue *base = L->base;
   TValue *ra = base + a;
   setobj2s(L, ra, cl->upvals[b]->v);
 }
 
-void vm_OP_GETGLOBAL(lua_State *L, TValue *k, LClosure *cl, int a, int bx) {
+OP_INLINE void vm_OP_GETGLOBAL(lua_State *L, TValue *k, LClosure *cl, int a, int bx) {
   TValue *base = L->base;
   TValue *ra = base + a;
   TValue *rb = k + bx;
@@ -77,13 +73,13 @@ void vm_OP_GETGLOBAL(lua_State *L, TValue *k, LClosure *cl, int a, int bx) {
   luaV_gettable(L, &g, rb, ra);
 }
 
-void vm_OP_GETTABLE(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_GETTABLE(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   TValue *ra = base + a;
   luaV_gettable(L, base + b, RK(c), ra);
 }
 
-void vm_OP_SETGLOBAL(lua_State *L, TValue *k, LClosure *cl, int a, int bx) {
+OP_INLINE void vm_OP_SETGLOBAL(lua_State *L, TValue *k, LClosure *cl, int a, int bx) {
   TValue *base = L->base;
   TValue *ra = base + a;
   TValue g;
@@ -92,7 +88,7 @@ void vm_OP_SETGLOBAL(lua_State *L, TValue *k, LClosure *cl, int a, int bx) {
   luaV_settable(L, &g, k + bx, ra);
 }
 
-void vm_OP_SETUPVAL(lua_State *L, LClosure *cl, int a, int b) {
+OP_INLINE void vm_OP_SETUPVAL(lua_State *L, LClosure *cl, int a, int b) {
   TValue *base = L->base;
   TValue *ra = base + a;
   UpVal *uv = cl->upvals[b];
@@ -100,20 +96,20 @@ void vm_OP_SETUPVAL(lua_State *L, LClosure *cl, int a, int b) {
   luaC_barrier(L, uv, ra);
 }
 
-void vm_OP_SETTABLE(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_SETTABLE(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   TValue *ra = base + a;
   luaV_settable(L, ra, RK(b), RK(c));
 }
 
-void vm_OP_NEWTABLE(lua_State *L, int a, int b_fb2int, int c_fb2int) {
+OP_INLINE void vm_OP_NEWTABLE(lua_State *L, int a, int b_fb2int, int c_fb2int) {
   Table *h;
   h = luaH_new(L, b_fb2int, c_fb2int);
   sethvalue(L, L->base + a, h);
   luaC_checkGC(L);
 }
 
-void vm_OP_SELF(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_SELF(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   TValue *ra = base + a;
   StkId rb = base + b;
@@ -121,67 +117,67 @@ void vm_OP_SELF(lua_State *L, TValue *k, int a, int b, int c) {
   luaV_gettable(L, rb, RK(c), ra);
 }
 
-void vm_OP_ADD(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_ADD(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   arith_op(luai_numadd, TM_ADD);
 }
 
-void vm_OP_ADD_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
+OP_INLINE void vm_OP_ADD_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
   TValue *base = L->base;
   arith_op_nc(luai_numadd, TM_ADD);
 }
 
-void vm_OP_SUB(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_SUB(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   arith_op(luai_numsub, TM_SUB);
 }
 
-void vm_OP_SUB_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
+OP_INLINE void vm_OP_SUB_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
   TValue *base = L->base;
   arith_op_nc(luai_numsub, TM_SUB);
 }
 
-void vm_OP_MUL(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_MUL(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   arith_op(luai_nummul, TM_MUL);
 }
 
-void vm_OP_MUL_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
+OP_INLINE void vm_OP_MUL_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
   TValue *base = L->base;
   arith_op_nc(luai_nummul, TM_MUL);
 }
 
-void vm_OP_DIV(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_DIV(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   arith_op(luai_numdiv, TM_DIV);
 }
 
-void vm_OP_DIV_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
+OP_INLINE void vm_OP_DIV_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
   TValue *base = L->base;
   arith_op_nc(luai_numdiv, TM_DIV);
 }
 
-void vm_OP_MOD(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_MOD(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   arith_op(luai_nummod, TM_MOD);
 }
 
-void vm_OP_MOD_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
+OP_INLINE void vm_OP_MOD_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
   TValue *base = L->base;
   arith_op_nc(luai_nummod, TM_MOD);
 }
 
-void vm_OP_POW(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE void vm_OP_POW(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   arith_op(luai_numpow, TM_POW);
 }
 
-void vm_OP_POW_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
+OP_INLINE void vm_OP_POW_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc, int c) {
   TValue *base = L->base;
   arith_op_nc(luai_numpow, TM_POW);
 }
 
-void vm_OP_UNM(lua_State *L, int a, int b) {
+OP_INLINE void vm_OP_UNM(lua_State *L, int a, int b) {
   TValue *base = L->base;
   TValue *ra = base + a;
   TValue *rb = base + b;
@@ -194,14 +190,14 @@ void vm_OP_UNM(lua_State *L, int a, int b) {
   }
 }
 
-void vm_OP_NOT(lua_State *L, int a, int b) {
+OP_INLINE void vm_OP_NOT(lua_State *L, int a, int b) {
   TValue *base = L->base;
   TValue *ra = base + a;
   int res = l_isfalse(base + b);  /* next assignment may change this value */
   setbvalue(ra, res);
 }
 
-void vm_OP_LEN(lua_State *L, int a, int b) {
+OP_INLINE void vm_OP_LEN(lua_State *L, int a, int b) {
   TValue *base = L->base;
   TValue *ra = base + a;
   const TValue *rb = base + b;
@@ -222,18 +218,18 @@ void vm_OP_LEN(lua_State *L, int a, int b) {
   }
 }
 
-void vm_OP_CONCAT(lua_State *L, int a, int b, int c) {
+OP_INLINE void vm_OP_CONCAT(lua_State *L, int a, int b, int c) {
   TValue *base;
   luaV_concat(L, c-b+1, c); luaC_checkGC(L);
   base = L->base;
   setobjs2s(L, base + a, base + b);
 }
 
-void vm_OP_JMP(lua_State *L, int sbx) {
+OP_INLINE void vm_OP_JMP(lua_State *L, int sbx) {
   dojump(sbx);
 }
 
-int vm_OP_EQ(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE int vm_OP_EQ(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   int ret;
   TValue *rb = RK(b);
@@ -244,7 +240,7 @@ int vm_OP_EQ(lua_State *L, TValue *k, int a, int b, int c) {
   return ret;
 }
 
-int vm_OP_EQ_NC(lua_State *L, TValue *k, int b, lua_Number nc) {
+OP_INLINE int vm_OP_EQ_NC(lua_State *L, TValue *k, int b, lua_Number nc) {
   TValue *base = L->base;
   int ret;
   TValue *rb = RK(b);
@@ -257,7 +253,7 @@ int vm_OP_EQ_NC(lua_State *L, TValue *k, int b, lua_Number nc) {
   return 1;
 }
 
-int vm_OP_NOT_EQ_NC(lua_State *L, TValue *k, int b, lua_Number nc) {
+OP_INLINE int vm_OP_NOT_EQ_NC(lua_State *L, TValue *k, int b, lua_Number nc) {
   TValue *base = L->base;
   int ret;
   TValue *rb = RK(b);
@@ -270,7 +266,7 @@ int vm_OP_NOT_EQ_NC(lua_State *L, TValue *k, int b, lua_Number nc) {
   return 0;
 }
 
-int vm_OP_LT(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE int vm_OP_LT(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   int ret;
   ret = (luaV_lessthan(L, RK(b), RK(c)) == a);
@@ -279,7 +275,7 @@ int vm_OP_LT(lua_State *L, TValue *k, int a, int b, int c) {
   return ret;
 }
 
-int vm_OP_LE(lua_State *L, TValue *k, int a, int b, int c) {
+OP_INLINE int vm_OP_LE(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   int ret;
   ret = (luaV_lessequal(L, RK(b), RK(c)) == a);
@@ -288,7 +284,7 @@ int vm_OP_LE(lua_State *L, TValue *k, int a, int b, int c) {
   return ret;
 }
 
-int vm_OP_TEST(lua_State *L, int a, int c) {
+OP_INLINE int vm_OP_TEST(lua_State *L, int a, int c) {
   TValue *ra = L->base + a;
   if (l_isfalse(ra) != c) {
     dojump(GETARG_sBx(*L->savedpc));
@@ -297,7 +293,7 @@ int vm_OP_TEST(lua_State *L, int a, int c) {
   return 0;
 }
 
-int vm_OP_TESTSET(lua_State *L, int a, int b, int c) {
+OP_INLINE int vm_OP_TESTSET(lua_State *L, int a, int b, int c) {
   TValue *base = L->base;
   TValue *ra = base + a;
   TValue *rb = base + b;
@@ -316,7 +312,7 @@ int vm_OP_TESTSET(lua_State *L, int a, int b, int c) {
  * if one ore more of then are not numbers.
  *
  */
-void vm_OP_FORPREP(lua_State *L, int a, int sbx) {
+OP_INLINE void vm_OP_FORPREP(lua_State *L, int a, int sbx) {
   TValue *ra = L->base + a;
   const TValue *init = ra;
   const TValue *plimit = ra+1;
@@ -333,7 +329,7 @@ void vm_OP_FORPREP(lua_State *L, int a, int sbx) {
   dojump(sbx);
 }
 
-void vm_OP_FORPREP_no_sub(lua_State *L, int a, int sbx) {
+OP_INLINE void vm_OP_FORPREP_no_sub(lua_State *L, int a, int sbx) {
   TValue *ra = L->base + a;
   const TValue *init = ra;
   const TValue *plimit = ra+1;
@@ -351,7 +347,7 @@ void vm_OP_FORPREP_no_sub(lua_State *L, int a, int sbx) {
 /*
  * limit & step are number constants.  Only test if init is a number.
  */
-void vm_OP_FORPREP_M_N_N(lua_State *L, int a, int sbx, lua_Number limit, lua_Number step) {
+OP_INLINE void vm_OP_FORPREP_M_N_N(lua_State *L, int a, int sbx, lua_Number limit, lua_Number step) {
   TValue *ra = L->base + a;
   const TValue *init = ra;
   if(!ttisnumber(init)) {
@@ -365,7 +361,7 @@ void vm_OP_FORPREP_M_N_N(lua_State *L, int a, int sbx, lua_Number limit, lua_Num
 /*
  * init & pstep are number constants.  Only test if plimit is a number.
  */
-void vm_OP_FORPREP_N_M_N(lua_State *L, int a, int sbx, lua_Number init, lua_Number step) {
+OP_INLINE void vm_OP_FORPREP_N_M_N(lua_State *L, int a, int sbx, lua_Number init, lua_Number step) {
   TValue *ra = L->base + a;
   const TValue *plimit = ra+1;
   if(!ttisnumber(plimit)) {
@@ -379,11 +375,11 @@ void vm_OP_FORPREP_N_M_N(lua_State *L, int a, int sbx, lua_Number init, lua_Numb
 /*
  * init, plimit & pstep are number constants.
  */
-void vm_OP_FORPREP_N_N_N(lua_State *L, int a, int sbx, lua_Number init, lua_Number step) {
+OP_INLINE void vm_OP_FORPREP_N_N_N(lua_State *L, int a, int sbx, lua_Number init, lua_Number step) {
   dojump(sbx);
 }
 
-int vm_OP_FORLOOP(lua_State *L, int a, int sbx) {
+OP_INLINE int vm_OP_FORLOOP(lua_State *L, int a, int sbx) {
   TValue *ra = L->base + a;
   lua_Number step = nvalue(ra+2);
   lua_Number idx = luai_numadd(nvalue(ra), step); /* increment index */
@@ -398,7 +394,7 @@ int vm_OP_FORLOOP(lua_State *L, int a, int sbx) {
   return 0;
 }
 
-int vm_OP_FORLOOP_N_N(lua_State *L, int a, int sbx, lua_Number limit, lua_Number step) {
+OP_INLINE int vm_OP_FORLOOP_N_N(lua_State *L, int a, int sbx, lua_Number limit, lua_Number step) {
   TValue *ra = L->base + a;
   lua_Number idx = luai_numadd(nvalue(ra), step); /* increment index */
   if (luai_numlt(0, step) ? luai_numle(idx, limit)
@@ -410,7 +406,7 @@ int vm_OP_FORLOOP_N_N(lua_State *L, int a, int sbx, lua_Number limit, lua_Number
   return 0;
 }
 
-int vm_OP_FORLOOP_N_N_N(lua_State *L, int a, int sbx, lua_Number idx, lua_Number limit, lua_Number step) {
+OP_INLINE int vm_OP_FORLOOP_N_N_N(lua_State *L, int a, int sbx, lua_Number idx, lua_Number limit, lua_Number step) {
   if (luai_numlt(0, step) ? luai_numle(idx, limit)
                           : luai_numle(limit, idx)) {
     dojump(sbx);  /* jump back */
@@ -419,7 +415,7 @@ int vm_OP_FORLOOP_N_N_N(lua_State *L, int a, int sbx, lua_Number idx, lua_Number
   return 0;
 }
 
-int vm_OP_FORLOOP_up(lua_State *L, int a, int sbx, lua_Number idx, lua_Number limit) {
+OP_INLINE int vm_OP_FORLOOP_up(lua_State *L, int a, int sbx, lua_Number idx, lua_Number limit) {
   if (luai_numle(idx, limit)) {
     dojump(sbx);  /* jump back */
     return 1;
@@ -427,7 +423,7 @@ int vm_OP_FORLOOP_up(lua_State *L, int a, int sbx, lua_Number idx, lua_Number li
   return 0;
 }
 
-int vm_OP_FORLOOP_down(lua_State *L, int a, int sbx, lua_Number idx, lua_Number limit) {
+OP_INLINE int vm_OP_FORLOOP_down(lua_State *L, int a, int sbx, lua_Number idx, lua_Number limit) {
   if (luai_numle(limit, idx)) {
     dojump(sbx);  /* jump back */
     return 1;
@@ -435,7 +431,7 @@ int vm_OP_FORLOOP_down(lua_State *L, int a, int sbx, lua_Number idx, lua_Number 
   return 0;
 }
 
-int vm_OP_FORLOOP_long_up(lua_State *L, int a, int sbx, lua_Long idx, lua_Long limit) {
+OP_INLINE int vm_OP_FORLOOP_long_up(lua_State *L, int a, int sbx, lua_Long idx, lua_Long limit) {
   if (luai_numle(idx, limit)) {
     dojump(sbx);  /* jump back */
     return 1;
@@ -443,7 +439,7 @@ int vm_OP_FORLOOP_long_up(lua_State *L, int a, int sbx, lua_Long idx, lua_Long l
   return 0;
 }
 
-int vm_OP_FORLOOP_long_down(lua_State *L, int a, int sbx, lua_Long idx, lua_Long limit) {
+OP_INLINE int vm_OP_FORLOOP_long_down(lua_State *L, int a, int sbx, lua_Long idx, lua_Long limit) {
   if (luai_numle(limit, idx)) {
     dojump(sbx);  /* jump back */
     return 1;
@@ -451,35 +447,31 @@ int vm_OP_FORLOOP_long_down(lua_State *L, int a, int sbx, lua_Long idx, lua_Long
   return 0;
 }
 
-void vm_OP_CLOSE(lua_State *L, int a) {
+OP_INLINE void vm_OP_CLOSE(lua_State *L, int a) {
   luaF_close(L, L->base + a);
 }
 
-LClosure *vm_get_current_closure(lua_State *L) {
+OP_INLINE LClosure *vm_get_current_closure(lua_State *L) {
   return &clvalue(L->ci->func)->l;
 }
 
-TValue *vm_get_current_constants(LClosure *cl) {
+OP_INLINE TValue *vm_get_current_constants(LClosure *cl) {
   return cl->p->k;
 }
 
-lua_Number vm_get_number(lua_State *L, int idx) {
+OP_INLINE lua_Number vm_get_number(lua_State *L, int idx) {
   return nvalue(L->base + idx);
 }
 
-void vm_set_number(lua_State *L, int idx, lua_Number num) {
+OP_INLINE void vm_set_number(lua_State *L, int idx, lua_Number num) {
   setnvalue(L->base + idx, num);  /* write number to Lua-stack */
 }
 
-lua_Long vm_get_long(lua_State *L, int idx) {
+OP_INLINE lua_Long vm_get_long(lua_State *L, int idx) {
   return (lua_Long)nvalue(L->base + idx);
 }
 
-void vm_set_long(lua_State *L, int idx, lua_Long num) {
+OP_INLINE void vm_set_long(lua_State *L, int idx, lua_Long num) {
   setnvalue(L->base + idx, (lua_Number)num);  /* write number to Lua-stack */
 }
-
-#ifdef __cplusplus
-}
-#endif
 

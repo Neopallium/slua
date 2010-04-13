@@ -24,10 +24,6 @@
   MIT License: http://www.opensource.org/licenses/mit-license.php
 */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "lua_core.h"
 #include "lobject.h"
 #include "slua_compiler.h"
@@ -77,8 +73,4 @@ void slua_newproto (lua_State *L, Proto *f) {
 	(void)L;
 	f->jit_func = NULL;
 }
-
-#ifdef __cplusplus
-}
-#endif
 

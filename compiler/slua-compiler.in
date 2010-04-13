@@ -19,9 +19,9 @@ if [[ ! -x "$SLUAC" ]]; then
 	SLUAC=`which sluac`
 fi
 
-CPU=i686
+#CPU=i686
 #CPU=pentium4
-#CPU=athlon64
+CPU=athlon64
 FORCE_CPU="0"
 FILE=
 FILES=""
@@ -107,14 +107,14 @@ FNAME=`basename ${FILE}`
 # select debug/optimize parameters.
 if [[ $DEBUG == "1" ]]; then
 	CFLAGS=" -O0 -ggdb "
-	LUA_FLAGS=" -O0 -g "
+	#LUA_FLAGS=" -O0 -g "
 	#LUA_FLAGS=" -O3 -do-not-inline-opcodes "
 	#CFLAGS=" -ggdb -O3 -fomit-frame-pointer -pipe -Wall "
 	if [[ ! -z $CPU && $FORCE_CPU == "1" ]]; then
 		CFLAGS=" -march=$CPU $CFLAGS "
 	fi
 else
-	LUA_FLAGS=" -O3 -s "
+	#LUA_FLAGS=" -O3 -s "
 	#LUA_FLAGS=" -O3 -g "
 	#CFLAGS=" -ggdb -O3 -fomit-frame-pointer -pipe -Wall "
 	CFLAGS=" -O3 -fomit-frame-pointer -pipe "
@@ -122,6 +122,7 @@ else
 		CFLAGS=" -march=$CPU $CFLAGS "
 	fi
 fi
+CFLAGS="-I../../compiler -I../../src "
 
 if [[ $MODE == "cbe" ]]; then
 	EXTRA_ARGS="$EXTRA_ARGS -no-main "
@@ -135,7 +136,7 @@ fi
 #
 # run sluac to compile Lua source/bytecode to C code
 #
-echo "$SLUAC $EXTRA_ARGS $LUA_FLAGS -c -o ${FILE}.bc ${FILES}"
+echo "$SLUAC $EXTRA_ARGS $LUA_FLAGS -c -o ${FILE}.c ${FILES}"
 $SLUAC $EXTRA_ARGS $LUA_FLAGS -c -o ${FILE}.c ${FILES} || {
 	echo "sluac: failed to compile Lua code into C code."
 	exit 1;

@@ -4,10 +4,6 @@
 ** See Copyright Notice in lua.h
 */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdlib.h>
 #include <math.h>
 
@@ -342,8 +338,4 @@ LUALIB_API int luaopen_math (lua_State *L) {
 #endif
   return 1;
 }
-
-#ifdef __cplusplus
-}
-#endif
 

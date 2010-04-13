@@ -2,12 +2,11 @@
 #ifndef lua_vm_ops_h
 #define lua_vm_ops_h
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "lua_core.h"
 #include "lobject.h"
+
+#define OP_INLINE static inline
+#define OP_INLINE static inline
 
 typedef struct {
   TValue *k;
@@ -80,6 +79,7 @@ extern void vm_print_OP(lua_State *L, LClosure *cl, const Instruction i, int pc_
 
 extern void vm_next_OP(lua_State *L, LClosure *cl, int pc_offset);
 
+#if 0
 extern void vm_OP_MOVE(lua_State *L, int a, int b);
 
 extern void vm_OP_LOADK(lua_State *L, TValue *k, int a, int bx);
@@ -146,12 +146,15 @@ extern int vm_OP_TEST(lua_State *L, int a, int c);
 
 extern int vm_OP_TESTSET(lua_State *L, int a, int b, int c);
 
+#endif
+
 extern int vm_OP_CALL(lua_State *L, int a, int b, int c);
 
 extern int vm_OP_RETURN(lua_State *L, int a, int b);
 
 extern int vm_OP_TAILCALL(lua_State *L, int a, int b);
 
+#if 0
 extern int vm_OP_FORLOOP(lua_State *L, int a, int sbx);
 extern int vm_OP_FORLOOP_N_N(lua_State *L, int a, int sbx, lua_Number limit, lua_Number step);
 extern int vm_OP_FORLOOP_N_N_N(lua_State *L, int a, int sbx, lua_Number idx, lua_Number limit, lua_Number step);
@@ -159,19 +162,24 @@ extern int vm_OP_FORLOOP_up(lua_State *L, int a, int sbx, lua_Number idx, lua_Nu
 extern int vm_OP_FORLOOP_down(lua_State *L, int a, int sbx, lua_Number idx, lua_Number limit);
 extern int vm_OP_FORLOOP_long_up(lua_State *L, int a, int sbx, lua_Long idx, lua_Long limit);
 extern int vm_OP_FORLOOP_long_down(lua_State *L, int a, int sbx, lua_Long idx, lua_Long limit);
+#endif
 
 extern void vm_OP_FORPREP_slow(lua_State *L, int a, int sbx);
+#if 0
 extern void vm_OP_FORPREP(lua_State *L, int a, int sbx);
 extern void vm_OP_FORPREP_no_sub(lua_State *L, int a, int sbx);
 extern void vm_OP_FORPREP_M_N_N(lua_State *L, int a, int sbx, lua_Number limit, lua_Number step);
 extern void vm_OP_FORPREP_N_M_N(lua_State *L, int a, int sbx, lua_Number init, lua_Number step);
 extern void vm_OP_FORPREP_N_N_N(lua_State *L, int a, int sbx, lua_Number init, lua_Number step);
+#endif
 
 extern int vm_OP_TFORLOOP(lua_State *L, int a, int c);
 
 extern void vm_OP_SETLIST(lua_State *L, int a, int b, int c);
 
+#if 0
 extern void vm_OP_CLOSE(lua_State *L, int a);
+#endif
 
 extern void vm_OP_CLOSURE(lua_State *L, LClosure *cl, int a, int bx, int pseudo_ops_offset);
 
@@ -182,6 +190,7 @@ extern void vm_mini_vm(lua_State *L, LClosure *cl, int count, int pseudo_ops_off
 
 extern void vm_op_hint_locals(char *locals, int stacksize, TValue *k, const Instruction i);
 
+#if 0
 extern LClosure *vm_get_current_closure(lua_State *L);
 
 extern TValue *vm_get_current_constants(LClosure *cl);
@@ -191,6 +200,7 @@ extern void vm_set_number(lua_State *L, int idx, lua_Number num);
 
 extern lua_Long vm_get_long(lua_State *L, int idx);
 extern void vm_set_long(lua_State *L, int idx, lua_Long num);
+#endif
 
 /*
 ** some macros for common tasks in `vm_OP_*' functions.
@@ -239,10 +249,6 @@ extern void vm_set_long(lua_State *L, int idx, lua_Long num);
           luaV_arith(L, ra, rb, RK(c), tm); \
       }
 
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif
 
