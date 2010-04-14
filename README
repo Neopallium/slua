@@ -1,37 +1,44 @@
-README for Lua 5.1
+README for slua
 
-See INSTALL for installation instructions.
-See HISTORY for a summary of changes since the last released version.
+=== Requires ===
 
-* What is Lua?
-  ------------
-  Lua is a powerful, light-weight programming language designed for extending
-  applications. Lua is also frequently used as a general-purpose, stand-alone
-  language. Lua is free software.
+=== Compile ===
+ * mkdir build
+ * cd build
+ for Release build:
+ * cmake .. -DCMAKE_BUILD_TYPE=Release
+ for Debug build:
+ * cmake .. -DCMAKE_BUILD_TYPE=Debug
+ * make
 
-  For complete information, visit Lua's web site at http://www.lua.org/ .
-  For an executive summary, see http://www.lua.org/about.html .
+=== Install ===
+ * make install
 
-  Lua has been used in many different projects around the world.
-  For a short list, see http://www.lua.org/uses.html .
+=== Patches to lua/src ===
+ * Emergency Garbage Collector: http://lua-users.org/wiki/EmergencyGarbageCollector
+ * LuaCoco-1.1.6: http://luajit.org/coco.html + (x86_64 support added)
+ * a few hooks where added to support static compiled functions.
 
-* Availability
-  ------------
-  Lua is freely available for both academic and commercial purposes.
-  See COPYRIGHT and http://www.lua.org/license.html for details.
-  Lua can be downloaded at http://www.lua.org/download.html .
+=== Programs ===
+ * slua: This command can be used to run Lua script.  It doesn't have JIT support!
+ * sluac: This command compiles Lua scripts into C code which calls lua vm ops functions.
+ * slua-compiler: This is a bash script that wraps sluac to compile Lua scripts into standalone executables or loadable modules.
 
-* Installation
-  ------------
-  Lua is implemented in pure ANSI C, and compiles unmodified in all known
-  platforms that have an ANSI C compiler. In most Unix-like platforms, simply
-  do "make" with a suitable target. See INSTALL for detailed instructions.
+=== Libraries ===
+ -- static & dynamic libraries for linking into host app.
+ * libslua_static.a & libslua.so
 
-* Origin
-  ------
-  Lua is developed at Lua.org, a laboratory of the Department of Computer
-  Science of PUC-Rio (the Pontifical Catholic University of Rio de Janeiro
-  in Brazil).
-  For more information about the authors, see http://www.lua.org/authors.html .
+ -- Used for compling Lua scripts to standalone executables.
+ * liblua_main.a
 
-(end of README)
+=== Using slua ===
+'sluac' alone can only compile Lua scripts to Lua bytecode or C code.  A wrapper script called 'slua-compiler' is provided that wraps 'sluac' and gcc.
+
+Compile standalone Lua script:
+slua-compiler script.lua
+outputs: ./script
+
+Compile Lua script as a module:
+slua-compiler -lua-module script.lua
+outputs: ./script.so
+

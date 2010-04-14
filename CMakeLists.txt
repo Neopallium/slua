@@ -1,5 +1,5 @@
 #
-# slua 0.4
+# slua
 #
 cmake_minimum_required(VERSION 2.4 FATAL_ERROR)
 
@@ -30,8 +30,8 @@ set(LUA_SOVERSION
 #
 # slua version
 #
-set(SLUA_VERSION_MAJOR 1)
-set(SLUA_VERSION_MINOR 1)
+set(SLUA_VERSION_MAJOR 0)
+set(SLUA_VERSION_MINOR 8)
 set(SLUA_VERSION_PATCH 0)
 set(SLUA_VERSION
 	"${SLUA_VERSION_MAJOR}.${SLUA_VERSION_MINOR}.${SLUA_VERSION_PATCH}")
