@@ -16,6 +16,7 @@
 #define JIT_PROTO_STATE \
 	lua_CFunction jit_func; /* jit compiled function */
 
+#include "build_config.h"
 #include <lua.h>
 /* extern all lua core functions. */
 #undef LUAI_FUNC

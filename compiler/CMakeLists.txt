@@ -7,6 +7,31 @@ set(CORE_LUA_SRC
 	lua_vm_ops_static.c
 	load_jit_proto.c
 )
+set(CORE_LIB_INCLUDES
+	lua_core.h
+	lua_vm_ops.c
+	lua_vm_ops.h
+	load_jit_proto.h
+	../src/ldebug.h
+	../src/ldo.h
+	../src/lfunc.h
+	../src/lgc.h
+	../src/lobject.h
+	../src/lopcodes.h
+	../src/lstate.h
+	../src/lstring.h
+	../src/ltable.h
+	../src/ltm.h
+	../src/lvm.h
+	../src/llimits.h
+	../src/lzio.h
+	../src/lmem.h
+	../src/lapi.h
+	../src/lauxlib.h
+	../src/lua.h
+	../src/luaconf.h
+	../src/lcoco.h
+)
 set(SLUA_COMMON_SRC
 	slua_compiler.c
 	codegen.c
@@ -27,6 +52,10 @@ set(SLUA_LIB_SRC
 )
 set(SLUA_BINS)
 set(SLUA_COMPILER)
+
+## generate build_config.h
+set(BUILD_CONFIG_H ${CMAKE_CURRENT_BINARY_DIR}/build_config.h)
+configure_file(build_config.h.cmake ${BUILD_CONFIG_H})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 				${PROJECT_SOURCE_DIR}/src
@@ -65,6 +94,9 @@ if(WANT_SHARED_LIBRARY)
 	# link lua interpreter with dynamic library
 	set(SLUA_MAIN_LIB slua_dynamic)
 	set(SLUA_LIBS ${SLUA_LIBS} slua_dynamic)
+	if(WIN32)
+		set(SLUA_BINS ${SLUA_BINS} slua_dynamic)
+	endif(WIN32)
 endif(WANT_SHARED_LIBRARY)
 
 #
@@ -137,13 +169,18 @@ add_executable(sluac ${SLUAC_SRC})
 add_target_properties(sluac COMPILE_FLAGS "${COMMON_CFLAGS}")
 add_target_properties(sluac LINK_FLAGS "${LD_FLAGS} ${COMMON_LDFLAGS}")
 target_link_libraries(sluac slua_static)
-set(SLUA_BINS sluac)
+set(SLUA_BINS ${SLUA_BINS} sluac)
 
 #
 # build as a cross-compiler
 #
-set(SLUA_COMPILER "${CMAKE_CURRENT_BINARY_DIR}/slua-compiler")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/slua-compiler.in" "${SLUA_COMPILER}" @ONLY)
+if(MINGW)
+	set(SLUA_COMPILER "${CMAKE_CURRENT_BINARY_DIR}/slua-compiler")
+	configure_file("${CMAKE_CURRENT_SOURCE_DIR}/slua-compiler_mingw.in" "${SLUA_COMPILER}" @ONLY)
+else(MINGW)
+	set(SLUA_COMPILER "${CMAKE_CURRENT_BINARY_DIR}/slua-compiler")
+	configure_file("${CMAKE_CURRENT_SOURCE_DIR}/slua-compiler.in" "${SLUA_COMPILER}" @ONLY)
+endif(MINGW)
 
 #
 # Lua stand-alone interpreter
@@ -236,6 +273,7 @@ else(APPLE AND WANT_SHARED_LIBRARY AND WANT_FRAMEWORK)
 			LIBRARY DESTINATION lib
 			ARCHIVE DESTINATION lib
 		)
+		install(FILES ${CORE_LIB_INCLUDES} ${BUILD_CONFIG_H} DESTINATION include)
 	endif(SLUA_LIBS)
 
 endif(APPLE AND WANT_SHARED_LIBRARY AND WANT_FRAMEWORK)

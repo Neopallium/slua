@@ -6,12 +6,6 @@ LIBTOOL="libtool --tag=CC --silent"
 RPATH=`pwd`
 SLUAC="./sluac"
 PREFIX="@CMAKE_INSTALL_PREFIX@"
-COMMON_LDFLAGS="@COMMON_LDFLAGS@"
-
-# find sluac
-if [[ ! -x "$SLUAC" ]]; then
-	SLUAC=`which sluac`
-fi
 
 #CPU=i686
 #CPU=pentium4
@@ -116,11 +110,11 @@ else
 		CFLAGS=" -march=$CPU $CFLAGS "
 	fi
 fi
-CFLAGS="-I$PREFIX/include/slua"
+CFLAGS="-I../include "
 
 if [[ $MODE == "standalone" ]]; then
 	# path to liblua_main.a
-	LIBS="$LIBS -L. -L$PREFIX/lib "
+	LIBS="$LIBS -L. -L../lib "
 fi
 
 #
@@ -139,8 +133,8 @@ case "$MODE" in
 		KEEP_TMPS=1
 		;;
 	standalone)
-		echo "$CC $CFLAGS $LIBS -o ${OUTPUT_FILE} ${FILE}.c -llua_main ${COMMON_LDFLAGS}"
-		$CC $CFLAGS $LIBS -o ${OUTPUT_FILE} ${FILE}.c -llua_main ${COMMON_LDFLAGS}
+		echo "$CC $CFLAGS $LIBS -o ${OUTPUT_FILE} ${FILE}.c -llua_main -lm"
+		$CC $CFLAGS $LIBS -o ${OUTPUT_FILE} ${FILE}.c -llua_main -lm
 		;;
 	lua_mod)
 		TMPS="$TMPS ${FPATH}/${FNAME}.lo ${FPATH}/lib${FNAME}.la"

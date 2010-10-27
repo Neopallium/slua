@@ -110,13 +110,13 @@ static void setprogdir (lua_State *L) {
 
 
 static void pusherror (lua_State *L) {
-  int error = GetLastError();
+  int last_error = GetLastError();
   char buffer[128];
   if (FormatMessageA(FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_SYSTEM,
-      NULL, error, 0, buffer, sizeof(buffer), NULL))
+      NULL, last_error, 0, buffer, sizeof(buffer), NULL))
     lua_pushstring(L, buffer);
   else
-    lua_pushfstring(L, "system error %d\n", error);
+    lua_pushfstring(L, "system error %d\n", last_error);
 }
 
 static void ll_unloadlib (void *lib) {
