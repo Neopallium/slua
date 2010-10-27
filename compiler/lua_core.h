@@ -19,7 +19,7 @@
 #include <lua.h>
 /* extern all lua core functions. */
 #undef LUAI_FUNC
-#define LUAI_FUNC extern
+#define LUAI_FUNC LUA_API
 
 #endif
 
