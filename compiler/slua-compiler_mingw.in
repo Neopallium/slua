@@ -110,7 +110,7 @@ else
 		CFLAGS=" -march=$CPU $CFLAGS "
 	fi
 fi
-CFLAGS="-I../include "
+CFLAGS="-I../include/slua "
 
 if [[ $MODE == "standalone" ]]; then
 	# path to liblua_main.a
