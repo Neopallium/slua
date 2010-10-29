@@ -66,32 +66,38 @@ extern void CVariable_unref(CVariable *var);
  *
  */
 enum CValueType {
-	VOID = 0,
-	INTEGER,
-	BOOLEAN,
-	DOUBLE,
-	STRING,
-	CODE,
-	VARIABLE,
+	VOID     = 0,
+	INTEGER  = 1,
+	BOOLEAN  = 2,
+	DOUBLE   = 3,
+	STRING   = 4,
+	BINARY   = 5,
+	CODE     = 6,
+	VARIABLE = 7,
 };
 
 typedef union CValueData {
 	uint64_t  num;
 	double    dnum;
 	char      *str;
+	uint8_t   *bin;
 	CVariable *var;
 } CValueData;
 
 struct CValue {
-	CValueType type;
 	CValueData data;
+	CValueType type;
+	uint32_t   len;
 };
 
 extern void CValue_void(CValue *val);
 extern void CValue_boolean(CValue *val, int is_true);
 extern void CValue_integer(CValue *val, uint64_t num);
 extern void CValue_double(CValue *val, double dnum);
-extern void CValue_string(CValue *val, const char *str);
+#define CValue_string(val, str) \
+	CValue_string_len(val, str, strlen(str))
+extern void CValue_string_len(CValue *val, const char *str, uint32_t len);
+extern void CValue_binary(CValue *val, const uint8_t *bin, uint32_t len);
 extern void CValue_code(CValue *val, const char *code);
 extern void CValue_variable(CValue *val, const char *type, const char *name);
 extern void CValue_set(CValue *val, const CValue *new_val);
@@ -151,6 +157,8 @@ struct CodeBlock {
 extern CodeBlock *new_CodeBlock(CScope *scope, const char *name, int write_label);
 extern void free_CodeBlock(CodeBlock *block);
 extern int CodeBlock_dump(CodeBlock *block, FILE *file);
+extern int CodeBlock_print_binary_data(CodeBlock *block, const uint8_t *bin, int len);
+extern int CodeBlock_print_quoted_str(CodeBlock *block, const char *str, int len);
 extern int CodeBlock_printf(CodeBlock *block, const char *fmt, ...);
 extern void CodeBlock_write_value(CodeBlock *block, const CValue *val);
 extern void CodeBlock_jump(CodeBlock *block, CodeBlock *desc);

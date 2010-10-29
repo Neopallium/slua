@@ -74,6 +74,7 @@ static void clear_CValue(CValue *val) {
 	case DOUBLE:
 		break;
 	case STRING:
+	case BINARY:
 		free(val->data.str);
 		val->data.str = NULL;
 		break;
@@ -86,6 +87,7 @@ static void clear_CValue(CValue *val) {
 		val->data.var = NULL;
 		break;
 	}
+	val->len = 0;
 	val->type = VOID;
 }
 
@@ -96,31 +98,44 @@ void CValue_void(CValue *val) {
 void CValue_boolean(CValue *val, int is_true) {
 	clear_CValue(val);
 	val->type = BOOLEAN;
+	val->len = 0;
 	val->data.num = (is_true != 0) ? 1 : 0;
 }
 
 void CValue_integer(CValue *val, uint64_t num) {
 	clear_CValue(val);
 	val->type = INTEGER;
+	val->len = 0;
 	val->data.num = num;
 }
 
 void CValue_double(CValue *val, double dnum) {
 	clear_CValue(val);
 	val->type = DOUBLE;
+	val->len = 0;
 	val->data.dnum = dnum;
 }
 
 void CValue_code(CValue *val, const char *code) {
 	clear_CValue(val);
 	val->type = CODE;
+	val->len = strlen(code);
 	val->data.str = strdup(code);
 }
 
-void CValue_string(CValue *val, const char *str) {
+void CValue_binary(CValue *val, const uint8_t *bin, uint32_t len) {
+	uint8_t *tmp;
 	clear_CValue(val);
+	val->type = BINARY;
+	val->len = len;
+	tmp = (uint8_t *)malloc(len);
+	memcpy(tmp, bin, len);
+	val->data.bin = tmp;
+}
+
+void CValue_string_len(CValue *val, const char *str, uint32_t len) {
+	CValue_binary(val, (const uint8_t *)str, len);
 	val->type = STRING;
-	val->data.str = strdup(str);
 }
 
 void CValue_variable(CValue *val, const char *type, const char *name) {
@@ -132,6 +147,7 @@ void CValue_variable(CValue *val, const char *type, const char *name) {
 void CValue_set(CValue *val, const CValue *new_val) {
 	clear_CValue(val);
 	val->type = new_val->type;
+	val->len = new_val->len;
 	switch(val->type) {
 	case VOID:
 	case INTEGER:
@@ -140,6 +156,11 @@ void CValue_set(CValue *val, const CValue *new_val) {
 		val->data = new_val->data;
 		break;
 	case STRING:
+		CValue_string_len(val, new_val->data.str, new_val->len);
+		break;
+	case BINARY:
+		CValue_binary(val, new_val->data.bin, new_val->len);
+		break;
 	case CODE:
 		val->data.str = strdup(new_val->data.str);
 		break;
@@ -326,6 +347,7 @@ int CFuncProto_dump(CFuncProto *proto, FILE *file, bool define) {
 
 #define GROW_SIZE 512
 #define MIN_SIZE 128
+#define CODE_WIDTH 80
 static void grow_CodeBlock(CodeBlock *block, int need) {
 	int new_size = block->len + need + GROW_SIZE;
 	if(new_size < block->size) return;
@@ -362,6 +384,169 @@ int CodeBlock_dump(CodeBlock *block, FILE *file) {
 	len = fwrite(block->code, 1, block->len, file);
 	if(len < (size_t)block->len) return -len;
 	return len;
+}
+
+int CodeBlock_print_binary_data(CodeBlock *block, const uint8_t *bin, int len) {
+	int i;
+	int rc;
+	int wlen = 0;
+	int width = 0;
+
+#define BIN_CHAR_SIZE 5
+#define BIN_CHAR_WIDTH (CODE_WIDTH / BIN_CHAR_SIZE)
+	/* estimate total length. */
+	wlen = 2; /* prefix. */
+	wlen += (len * BIN_CHAR_SIZE); /* '0xXX,' values. */
+	wlen += ((len + BIN_CHAR_WIDTH) / BIN_CHAR_WIDTH); /* newlines. */
+	wlen += 3; /* postfix. */
+	grow_CodeBlock(block, wlen);
+	/* reset write len. */
+	wlen = 0;
+	rc = CodeBlock_printf(block, "{\n");
+	if(rc <= 0) return rc;
+	wlen += rc;
+	for(i = 0; i < len; i++) {
+		rc = CodeBlock_printf(block, "0x%.2x,", bin[i]);
+		if(rc <= 0) return rc;
+		width += rc;
+		wlen += rc;
+		if(width >= CODE_WIDTH) {
+			rc = CodeBlock_printf(block, "\n");
+			if(rc <= 0) return rc;
+			width = 0;
+			wlen += rc;
+		}
+	}
+	if(width > 0) {
+		rc = CodeBlock_printf(block, "\n");
+		if(rc <= 0) return rc;
+		wlen += rc;
+	}
+	rc = CodeBlock_printf(block, "};\n");
+	if(rc <= 0) return rc;
+	wlen += rc;
+	return wlen;
+}
+
+static const unsigned char list_safe_punct[] = "~`!@#$%^&*()_+-=';:,./<>?[]{}|";
+static const unsigned char list_escape_chars[] = "\n\t\v\b\r\f\a\"\\";
+typedef enum {
+	CharEncodeAsIs   = 0,
+	CharEncodeEscape = 1,
+	CharEncodeOct    = 2,
+} CharEncodeType;
+static int char_encode_init = 1;
+static uint8_t char_encode[256];
+#define ASIS_ENCODE_LEN 1 /* strlen("\n") */
+#define ESCAPE_ENCODE_LEN 2 /* strlen("\\n") */
+#define OCT_ENCODE_LEN 4 /* strlen("\\012") */
+static void initialize_char_encode() {
+	uint_fast32_t i;
+	uint8_t ch;
+	/* clear, mark all chars as needing octal-encoding. */
+	for(i = 0; i < sizeof(char_encode); i++) char_encode[i] = CharEncodeOct;
+	/* mark safe punct 'encode as-is' */
+	for(i = 0; list_safe_punct[i] != 0; i++) {
+		ch = list_safe_punct[i];
+		char_encode[ch] = CharEncodeAsIs;
+	}
+	/* mark alphanum 'encode as-is' */
+	for(ch = 'a'; ch <= 'z'; ch++) char_encode[ch] = CharEncodeAsIs;
+	for(ch = 'A'; ch <= 'Z'; ch++) char_encode[ch] = CharEncodeAsIs;
+	for(ch = '0'; ch <= '9'; ch++) char_encode[ch] = CharEncodeAsIs;
+	/* space. */
+	ch = ' ';
+	char_encode[ch] = CharEncodeAsIs;
+	/* clear, mark all chars as needing octal-encoding. */
+	for(i = 0; list_escape_chars[i] != 0; i++) {
+		ch = list_escape_chars[i];
+		char_encode[ch] = CharEncodeEscape;
+	}
+	char_encode_init = 0;
+}
+
+int CodeBlock_print_quoted_str(CodeBlock *block, const char *str, int len) {
+	char *out;
+	uint_fast32_t needed;
+	uint_fast32_t out_len;
+	uint_fast32_t out_old_len;
+	uint_fast32_t out_size;
+	uint_fast32_t str_len;
+	uint_fast32_t str_off;
+	char ch;
+	CharEncodeType encode;
+	int rc;
+
+	if(char_encode_init) {
+		initialize_char_encode();
+	}
+
+	rc = CodeBlock_printf(block, "\"");
+	if(rc < 0) return rc;
+
+	str_len = len;
+	str_off = 0;
+	needed = (MIN_SIZE > str_len) ? MIN_SIZE : str_len;
+
+	out_len = block->len;
+	out_old_len = out_len;
+	out_size = block->size;
+
+	do {
+		/* make room for quoted string. */
+		if((out_size - out_len) < needed) {
+			grow_CodeBlock(block, needed);
+			out_size = block->size;
+		}
+		out = block->code;
+		/* leave room for a full '\377' encoded char. */
+		out_size -= OCT_ENCODE_LEN+1;
+		while(out_len <= out_size) {
+			if(str_off >= str_len) goto done;
+			ch = str[str_off++];
+			/* get char encode type. */
+			encode = char_encode[(uint8_t)ch];
+			switch(encode) {
+			case CharEncodeAsIs:
+				out[out_len++] = ch;
+				break;
+			case CharEncodeEscape:
+				out[out_len++] = '\\';
+				switch(ch) {
+				case '\n': ch = 'n'; break;
+				case '\t': ch = 't'; break;
+				case '\v': ch = 'v'; break;
+				case '\b': ch = 'b'; break;
+				case '\r': ch = 'r'; break;
+				case '\f': ch = 'f'; break;
+				case '\a': ch = 'a'; break;
+				case '\"':
+				case '\\':
+					break;
+				default:
+					fprintf(stderr, "Can't escape character(0x%x) = %c.\n", (uint8_t)ch, ch);
+					exit(1);
+					break;
+				}
+				out[out_len++] = ch;
+				break;
+			case CharEncodeOct:
+				snprintf(out + out_len, OCT_ENCODE_LEN+1, "\\%.3o", ((uint8_t)ch) & 0xFF);
+				out_len += OCT_ENCODE_LEN;
+				break;
+			}
+		}
+		needed += MIN_SIZE + (str_len - str_off);
+	} while(1);
+done:
+	/* commit written data to block. */
+	block->len = out_len;
+	out_len -= out_old_len; /* cal. how many bytes written. */
+	/* write end quote. */
+	rc = CodeBlock_printf(block, "\"");
+	if(rc < 0) return rc;
+	/* return length of bytes written. */
+	return out_len + 2;
 }
 
 int CodeBlock_printf(CodeBlock *block, const char *fmt, ...) {
@@ -408,10 +593,13 @@ void CodeBlock_write_value(CodeBlock *block, const CValue *val) {
 		CodeBlock_printf(block, "%ld", val->data.num);
 		break;
 	case DOUBLE:
-		CodeBlock_printf(block, "%f", val->data.dnum);
+		CodeBlock_printf(block, "%.30g", val->data.dnum);
 		break;
 	case STRING:
-		CodeBlock_printf(block, "\"%s\"", val->data.str);
+		CodeBlock_print_quoted_str(block, val->data.str, val->len);
+		break;
+	case BINARY:
+		CodeBlock_print_binary_data(block, val->data.bin, val->len);
 		break;
 	case CODE:
 		CodeBlock_printf(block, "%s", val->data.str);

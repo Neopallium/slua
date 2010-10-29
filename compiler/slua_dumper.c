@@ -62,7 +62,7 @@ void dump_constants(CScope *scope, CodeBlock *block, CValue *constants, Proto *p
 				const_type = TYPE_STRING;
 				const_length = tsvalue(tval)->len;
 				field = ".str";
-				CValue_string(&val, svalue(tval));
+				CValue_string_len(&val, svalue(tval), tsvalue(tval)->len);
 				break;
 			case LUA_TBOOLEAN:
 				const_type = TYPE_BOOLEAN;
@@ -136,7 +136,7 @@ void dump_upvalues(CScope *scope, CodeBlock *block, CValue *upvalues, Proto *p) 
 
 	for(i = 0; i < p->sizeupvalues; i++) {
 		CodeBlock_printf(block, "\t");
-		CValue_string(&val, getstr(p->upvalues[i]));
+		CValue_string_len(&val, getstr(p->upvalues[i]), p->upvalues[i]->tsv.len);
 		CodeBlock_write_value(block, &val);
 		CodeBlock_printf(block, ",\n");
 	}
