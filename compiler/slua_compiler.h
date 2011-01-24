@@ -25,6 +25,8 @@
 #ifndef slua_compiler_h
 #define slua_compiler_h
 
+#include <stdio.h>
+
 #include "lua_core.h"
 
 #define SLUA_VERSION "slua 0.4"
