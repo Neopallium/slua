@@ -38,7 +38,7 @@ function usage() {
 OPTIONS:
   -c++             - Compile as C++ code instead of C code.  Requires that the core was
 	                     also compiled as C++ code.
-  -lua-module      - Compile Lua script into a loadable module instead of a standalone
+  -M               - Compile Lua script into a loadable module instead of a standalone
                        executable.
   -debug           - Turns off all optimizations and turns on debug info.  Both Lua debug
                        info and gcc debug symbols are enabled.
@@ -66,7 +66,7 @@ for arg in "$@" ; do
 		continue
 	fi
 	case "$arg" in
-	-lua-mod*)  MODE="lua_mod"; EXTRA_ARGS="$EXTRA_ARGS $arg" ;;
+	-M)  MODE="lua_mod"; EXTRA_ARGS="$EXTRA_ARGS $arg" ;;
 	-static)  STATIC="1" ;;
 	-c++)  CC=g++ ;;
 	-debug)  DEBUG="1" ;;

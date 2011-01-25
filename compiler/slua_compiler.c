@@ -328,7 +328,7 @@ void slua_compiler_compile(SLuaCompiler *compiler, Proto *p) {
 
 	// create function.
 	len = slua_compiler_proto_name(p, buf, BUF_LEN);
-	func = new_CFunc("int", buf);
+	func = new_CFunc("int", buf, false);
 	CFunc_create_param(func, &func_L, "lua_State *", "L");
 	args = new_CValues(0);
 	// entry block

@@ -828,9 +828,9 @@ bool CScope_is_file(CScope *scope) {
  * CFunc
  *
  */
-CFunc *new_CFunc(const char *ret_type, const char *name) {
+CFunc *new_CFunc(const char *ret_type, const char *name, bool is_extern) {
 	CFunc *func = (CFunc *)malloc(sizeof(CFunc));
-	func->proto = new_CFuncProto(ret_type, name, false);
+	func->proto = new_CFuncProto(ret_type, name, is_extern);
 	init_CScope(&(func->scope), SCOPE_FUNC);
 	/* create prolog block. */
 	func->prolog = new_CodeBlock(&(func->scope), "prolog", 0);

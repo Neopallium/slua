@@ -237,7 +237,7 @@ struct CFunc {
 };
 
 #define CScope_to_CFunc(scope) ((CFunc *)scope)
-extern CFunc *new_CFunc(const char *ret_type, const char *name);
+extern CFunc *new_CFunc(const char *ret_type, const char *name, bool is_extern);
 
 extern void free_CFunc(CFunc *func);
 

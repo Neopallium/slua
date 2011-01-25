@@ -34,7 +34,7 @@
 #include "lstate.h"
 #include "load_jit_proto.h"
 
-static bool LuaModule = false;
+bool LuaModule = false;
 
 //===----------------------------------------------------------------------===//
 // Dump a compilable C code module.
@@ -378,7 +378,7 @@ CFunc *dump_lua_module(CScope *scope, Proto *p, const char *mod_name) {
 	//
 	// dump 'luaopen_<mod_name>' for loading the module.
 	//
-	func = new_CFunc("int", buf);
+	func = new_CFunc("int", buf, true);
 	// name arg1 = "L"
 	CFunc_create_param(func, &func_L, "lua_State *", "L");
 	// entry block

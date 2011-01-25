@@ -29,6 +29,9 @@
 
 #include "lobject.h"
 
+#include <stdbool.h>
+extern bool LuaModule;
+
 void slua_dumper_dump(FILE *file, const char *output, lua_State *L, Proto *p, int stripping);
 
 #endif
