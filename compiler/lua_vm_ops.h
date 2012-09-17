@@ -139,8 +139,10 @@ extern int vm_OP_EQ_NC(lua_State *L, TValue *k, int b, lua_Number nc);
 extern int vm_OP_NOT_EQ_NC(lua_State *L, TValue *k, int b, lua_Number nc);
 
 extern int vm_OP_LT(lua_State *L, TValue *k, int a, int b, int c);
+extern int vm_OP_LT_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc);
 
 extern int vm_OP_LE(lua_State *L, TValue *k, int a, int b, int c);
+extern int vm_OP_LE_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc);
 
 extern int vm_OP_TEST(lua_State *L, int a, int c);
 

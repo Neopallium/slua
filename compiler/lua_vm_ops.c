@@ -275,10 +275,42 @@ OP_INLINE int vm_OP_LT(lua_State *L, TValue *k, int a, int b, int c) {
   return ret;
 }
 
+OP_INLINE int vm_OP_LT_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc) {
+  TValue *base = L->base;
+  TValue *l = RK(b);
+  int ret;
+  if(ttisnumber(l)) {
+    ret = (luai_numlt(nvalue(l), nc) == a);
+  } else {
+    TValue r;
+    setnvalue(&r, nc);
+    ret = (luaV_lessthan(L, l, &r) == a);
+  }
+  if(ret)
+    dojump(GETARG_sBx(*L->savedpc));
+  return ret;
+}
+
 OP_INLINE int vm_OP_LE(lua_State *L, TValue *k, int a, int b, int c) {
   TValue *base = L->base;
   int ret;
   ret = (luaV_lessequal(L, RK(b), RK(c)) == a);
+  if(ret)
+    dojump(GETARG_sBx(*L->savedpc));
+  return ret;
+}
+
+OP_INLINE int vm_OP_LE_NC(lua_State *L, TValue *k, int a, int b, lua_Number nc) {
+  TValue *base = L->base;
+  TValue *l = RK(b);
+  int ret;
+  if(ttisnumber(l)) {
+    ret = (luai_numle(nvalue(l), nc) == a);
+  } else {
+    TValue r;
+    setnvalue(&r, nc);
+    ret = (luaV_lessequal(L, l, &r) == a);
+  }
   if(ret)
     dojump(GETARG_sBx(*L->savedpc));
   return ret;
